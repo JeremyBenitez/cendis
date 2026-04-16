@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../config/api_config.dart';
 
 class ApiClient {
+
   static const String baseUrl = ApiConfig.baseUrl;
   
   static final ApiClient _instance = ApiClient._internal();
@@ -69,6 +70,7 @@ class ApiClient {
   }
   
   Future<void> setAuthToken(String token) async {
+
     _authToken = token;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('auth_token', token);
@@ -76,6 +78,7 @@ class ApiClient {
   }
   
   Future<void> loadAuthToken() async {
+
     final prefs = await SharedPreferences.getInstance();
     _authToken = prefs.getString('auth_token');
     if (_authToken != null) {
@@ -84,6 +87,7 @@ class ApiClient {
   }
   
   Future<void> clearAuthToken() async {
+
     _authToken = null;
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('auth_token');
@@ -137,6 +141,7 @@ class ApiClient {
 }
 
 class ApiException implements Exception {
+  
   final int statusCode;
   final String message;
   final dynamic errors;

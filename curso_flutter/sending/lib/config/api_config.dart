@@ -13,7 +13,8 @@ class ApiConfig {
   // Endpoints de Pedidos
   static const String notasVar = '/notas/var';
   static const String yaguara = '/yaguara';
-  
+  static const String depositos = '/yaguara/depositos';// Endpoint victor
+
   // Endpoints de Escaneo
   static const String procesarNotas = '/notas/procesar_notas_yaguara';
   

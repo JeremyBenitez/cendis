@@ -4,11 +4,16 @@ import '../models/login_response.dart';
 import '../config/api_config.dart';
 
 class AuthService {
+
   final ApiClient _apiClient = ApiClient();
   
   Future<LoginResponse> login(LoginRequest request) async {
+
     try {
+
       final response = await _apiClient.post(ApiConfig.auth, request.toJson());
+
+      print("response: $response");
       
       if (response['token'] != null) {
         await _apiClient.setAuthToken(response['token']);
@@ -20,15 +25,19 @@ class AuthService {
         message: 'Inicio de sesión exitoso',
       );
     } on ApiException catch (e) {
+
       // Primero intentar extraer el mensaje personalizado de la respuesta
       String mensajePersonalizado = '';
+
       if (e.errors != null && e.errors is Map) {
         mensajePersonalizado = e.errors['Mensaje'] ?? e.errors['message'] ?? '';
       }
       
       // Si hay mensaje personalizado, usarlo
       if (mensajePersonalizado.isNotEmpty) {
+
         final mensajeAmigable = _traducirMensajePersonalizado(mensajePersonalizado);
+        
         return LoginResponse(
           rawData: {'message': mensajePersonalizado, 'statusCode': e.statusCode},
           isSuccess: false,
@@ -53,6 +62,7 @@ class AuthService {
   }
   
   String _traducirMensajePersonalizado(String mensaje) {
+
     final msgLower = mensaje.toLowerCase();
     
     if (msgLower.contains('usuario no encontrado') || msgLower.contains('user not found')) {

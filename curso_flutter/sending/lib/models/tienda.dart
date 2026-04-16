@@ -1,4 +1,5 @@
 class Tienda {
+  
   final int id;
   final String nombre;
   
@@ -6,6 +7,5 @@ class Tienda {
   
   Map<String, dynamic> toJson() => {'id': id, 'nombre': nombre};
   
-  factory Tienda.fromJson(Map<String, dynamic> json) =>
-      Tienda(id: json['id'], nombre: json['nombre']);
+  factory Tienda.fromJson(Map<String, dynamic> json) => Tienda(id: json['id'], nombre: json['nombre']);
 }

@@ -15,6 +15,7 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
+
   final TextEditingController _usuarioController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
   final AuthService _authService = AuthService();
@@ -22,7 +23,10 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _isLoading = false;
 
   void _handleLogin() async {
+
+
     if (_usuarioController.text.isEmpty) {
+
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Por favor, ingresa tu usuario'),
@@ -55,12 +59,16 @@ class _LoginScreenState extends State<LoginScreen> {
     );
     
     final response = await _authService.login(request);
+
+    print("login response:");
+    print(response);
     
     setState(() {
       _isLoading = false;
     });
     
     if (response.isSuccess && mounted) {
+
       print('✅ Login exitoso');
       print('Respuesta: ${response.rawData}');
       
@@ -81,7 +89,9 @@ class _LoginScreenState extends State<LoginScreen> {
           ),
         ),
       );
-    } else {
+    } 
+    else {
+
       final errorMsg = response.message ?? 'Error al iniciar sesión';
       
       IconData icono;
