@@ -1,14 +1,26 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../utils/app_colors.dart';
 import '../models/tienda.dart';
 import '../models/producto_escaneado.dart';
+import '../services/escaneo_service.dart';
+import '../models/nota_response.dart';
 import 'verification_screen.dart';
+import '../widgets/sweet_alert_dialog.dart';
 
 class ScanningScreen extends StatefulWidget {
   final String noteId;
   final Tienda tienda;
+  final List<ProductoData>? productosNota;
+  final List<ProductoEscaneado>? productosPrecargados;
 
-  const ScanningScreen({super.key, required this.noteId, required this.tienda});
+  const ScanningScreen({
+    super.key,
+    required this.noteId,
+    required this.tienda,
+    this.productosNota,
+    this.productosPrecargados,
+  });
 
   @override
   State<ScanningScreen> createState() => _ScanningScreenState();
@@ -17,44 +29,299 @@ class ScanningScreen extends StatefulWidget {
 class _ScanningScreenState extends State<ScanningScreen> {
   final TextEditingController _codigoController = TextEditingController();
   final TextEditingController _cantidadController = TextEditingController();
-  bool _isPdaMode = false;
+  final FocusNode _codigoFocusNode = FocusNode();
+  final EscaneoService _escaneoService = EscaneoService();
+
+  bool _isPdaMode = true;
+  bool _isLoading = false;
   List<ProductoEscaneado> _productos = [];
+  Map<String, bool> _productosValidados = {}; // ← Nuevo mapa para validación
 
   int get totalProductos => _productos.length;
 
-  void _handleToggleMode() {
-    setState(() {
-      _isPdaMode = !_isPdaMode;
-      if (_isPdaMode) {
-        _codigoController.clear();
+  Map<String, int> get _productosEsperadosMap {
+    final map = <String, int>{};
+    for (final producto in widget.productosNota ?? []) {
+      map[producto.codigo] = producto.cantidadEsperada;
+    }
+    return map;
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _cantidadController.text = '1';
+
+    if (widget.productosPrecargados != null &&
+        widget.productosPrecargados!.isNotEmpty) {
+      _productos = List.from(widget.productosPrecargados!);
+      // Marcar productos precargados como válidos
+      for (final producto in _productos) {
+        _productosValidados[producto.codigo] = true;
+      }
+      print('📦 Productos precargados: ${_productos.length}');
+
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        SweetAlertDialog.showWarning(
+          context: context,
+          title: 'Nota ya procesada',
+          message:
+              'Esta nota ya fue procesada anteriormente. Se han cargado los productos ya escaneados.',
+          button1Text: 'Continuar',
+          onButton1Pressed: () => Navigator.pop(context),
+        );
+      });
+    }
+
+    print(
+      '📦 Productos esperados en esta nota: ${widget.productosNota?.length ?? 0}',
+    );
+
+    if (_isPdaMode) {
+      Future.delayed(const Duration(milliseconds: 500), () {
+        _codigoFocusNode.requestFocus();
+      });
+    }
+
+    _codigoController.addListener(() {
+      if (_isPdaMode && _codigoController.text.isNotEmpty) {
+        FocusScope.of(context).nextFocus();
       }
     });
   }
 
-  void _handleLoad() {
+  @override
+  void dispose() {
+    _codigoController.dispose();
+    _cantidadController.dispose();
+    _codigoFocusNode.dispose();
+    super.dispose();
+  }
+
+  void _handleToggleMode() {
+    setState(() {
+      _isPdaMode = !_isPdaMode;
+      _codigoController.clear();
+
+      if (_isPdaMode) {
+        _codigoFocusNode.requestFocus();
+      }
+    });
+  }
+
+  void _mostrarModalCantidadIncorrecta({
+    required String codigo,
+    required int cantidadEscaneada,
+    required int cantidadEsperada,
+  }) {
+    SweetAlertDialog.showWarning(
+      context: context,
+      title: 'Cantidad Incorrecta',
+      message: 'La cantidad escaneada no coincide con lo esperado',
+      detailTitle: 'Código: $codigo',
+      detailValue1: cantidadEscaneada.toString(),
+      detailValue2: cantidadEsperada.toString(),
+      button1Text: 'Cambiar manualmente',
+      button2Text: 'Validar',
+      onButton1Pressed: () {
+        Navigator.pop(context);
+        _abrirAjusteManual(codigo, cantidadEsperada);
+      },
+      onButton2Pressed: () async {
+        Navigator.pop(context);
+        
+        setState(() {
+          _isLoading = true;
+        });
+
+        final response = await _escaneoService.escanearProducto(
+          cantidad: cantidadEscaneada,
+          codigo: codigo,
+          documento: widget.noteId,
+          tienda: widget.tienda.nombre,
+          force: '',
+        );
+
+        setState(() {
+          _isLoading = false;
+        });
+
+        if (response.success) {
+          _agregarProductoConCantidad(codigo, cantidadEscaneada, validado: true);
+        } else {
+          SweetAlertDialog.showError(
+            context: context,
+            title: 'Error',
+            message: response.message ?? 'Ocurrió un error inesperado',
+            buttonText: 'Entendido',
+          );
+        }
+      },
+    );
+  }
+
+  void _abrirAjusteManual(String codigo, int cantidadEsperada) {
+    final TextEditingController ajusteController = TextEditingController(
+      text: cantidadEsperada.toString(),
+    );
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          title: const Text('Ajuste manual'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('Código: $codigo'),
+              const SizedBox(height: 12),
+              TextField(
+                controller: ajusteController,
+                keyboardType: TextInputType.number,
+                decoration: InputDecoration(
+                  labelText: 'Cantidad correcta',
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancelar'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                final nuevaCantidad =
+                    int.tryParse(ajusteController.text) ?? cantidadEsperada;
+                Navigator.pop(context);
+                _agregarProductoConCantidad(codigo, nuevaCantidad, validado: true);
+              },
+              style: ElevatedButton.styleFrom(backgroundColor: AppColors.azul),
+              child: const Text('Aceptar'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _agregarProductoConCantidad(String codigo, int cantidad, {bool validado = true}) {
+    print('📦 Agregando producto: $codigo x $cantidad (validado: $validado)');
+    print('📦 Productos actuales antes: ${_productos.length}');
+
+    setState(() {
+      final existingIndex = _productos.indexWhere((p) => p.codigo == codigo);
+      if (existingIndex >= 0) {
+        print('📦 Producto ya existe, sumando cantidad');
+        _productos[existingIndex].cantidad += cantidad;
+      } else {
+        print('📦 Producto nuevo, agregando');
+        _productos.add(ProductoEscaneado(codigo: codigo, cantidad: cantidad));
+      }
+      _productosValidados[codigo] = validado;
+      _codigoController.clear();
+      _cantidadController.text = '1';
+
+      if (_isPdaMode) {
+        _codigoFocusNode.requestFocus();
+      }
+    });
+
+    print('📦 Productos actuales después: ${_productos.length}');
+    print('📦 Validados: $_productosValidados');
+
+    SweetAlertDialog.showSuccess(
+      context: context,
+      title: '¡Producto Agregado!',
+      message: '$codigo x $cantidad unidades',
+      buttonText: 'Continuar',
+    );
+  }
+
+  void _handleLoad() async {
+    print('🚨🚨🚨 _handleLoad fue llamado 🚨🚨🚨');
+    
     final String codigo = _codigoController.text.trim();
     final int? cantidad = int.tryParse(_cantidadController.text.trim());
 
-    if (codigo.isNotEmpty && cantidad != null && cantidad > 0) {
-      setState(() {
-        final int existingIndex = _productos.indexWhere(
-          (p) => p.codigo == codigo,
-        );
-        if (existingIndex >= 0) {
-          _productos[existingIndex].cantidad += cantidad;
-        } else {
-          _productos.add(ProductoEscaneado(codigo: codigo, cantidad: cantidad));
-        }
-        _codigoController.clear();
-        _cantidadController.text = '1';
-      });
+    print('========== HANDLE LOAD ==========');
+    print('🔍 Código ingresado: "$codigo"');
+    print('🔍 Cantidad ingresada: $cantidad');
+    print('🔍 Productos esperados map: $_productosEsperadosMap');
+    print('================================');
+
+    if (codigo.isEmpty) {
+      SweetAlertDialog.showError(
+        context: context,
+        title: 'Campo vacío',
+        message: 'Por favor, ingrese un código',
+        buttonText: 'Entendido',
+      );
+      return;
+    }
+
+    if (cantidad == null || cantidad <= 0) {
+      SweetAlertDialog.showError(
+        context: context,
+        title: 'Cantidad inválida',
+        message: 'Por favor, ingrese una cantidad válida mayor a 0',
+        buttonText: 'Entendido',
+      );
+      return;
+    }
+
+    final cantidadEsperada = _productosEsperadosMap[codigo];
+
+    if (cantidadEsperada != null && cantidad != cantidadEsperada) {
+      print('⚠️ Cantidad incorrecta: $cantidad vs $cantidadEsperada');
+      _mostrarModalCantidadIncorrecta(
+        codigo: codigo,
+        cantidadEscaneada: cantidad,
+        cantidadEsperada: cantidadEsperada,
+      );
+      return;
+    }
+
+    if (cantidadEsperada == null) {
+      print('⚠️ Código no encontrado localmente, se enviará a la API para validación');
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Ingrese un código y cantidad válida'),
-          backgroundColor: AppColors.rojo,
-          duration: Duration(seconds: 2),
-        ),
+      print('✅ Cantidad correcta, enviando a API...');
+    }
+
+    setState(() {
+      _isLoading = true;
+    });
+
+    final response = await _escaneoService.escanearProducto(
+      cantidad: cantidad,
+      codigo: codigo,
+      documento: widget.noteId,
+      tienda: widget.tienda.nombre,
+      force: '',
+    );
+
+    setState(() {
+      _isLoading = false;
+    });
+
+    print('📥 Respuesta escaneo - success: ${response.success}');
+    print('📥 Mensaje: ${response.message}');
+
+    if (response.success) {
+      _agregarProductoConCantidad(codigo, cantidad, validado: true);
+    } else {
+      SweetAlertDialog.showError(
+        context: context,
+        title: 'Error al escanear',
+        message: response.message ?? 'Ocurrió un error inesperado',
+        buttonText: 'Entendido',
       );
     }
   }
@@ -62,30 +329,12 @@ class _ScanningScreenState extends State<ScanningScreen> {
   void _handleRemove(String codigo) {
     setState(() {
       _productos.removeWhere((p) => p.codigo == codigo);
+      _productosValidados.remove(codigo);
     });
   }
 
   void _handleSave() {
-    if (_productos.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('No hay productos escaneados para guardar'),
-          backgroundColor: AppColors.rojo,
-          duration: Duration(seconds: 2),
-        ),
-      );
-      return;
-    }
-
-    // Simulación de base de datos - Productos esperados por nota
-    final Map<String, int> productosEsperados = {
-      '123122131': 10,
-      '2132132132': 5,
-      'ABC123': 3,
-      'XYZ789': 7,
-      'DEF456': 4,
-      'GHI789': 6,
-    };
+    if (_productos.isEmpty) return;
 
     Navigator.pushReplacement(
       context,
@@ -94,61 +343,31 @@ class _ScanningScreenState extends State<ScanningScreen> {
           noteId: widget.noteId,
           tienda: widget.tienda,
           productosEscaneados: _productos,
-          productosEsperados: productosEsperados,
+          productosEsperados: _productosEsperadosMap,
         ),
       ),
     );
   }
 
-  void _handleClear() {
+  void _handleClear() async {
     if (_productos.isEmpty) return;
 
-    showDialog(
+    final confirmado = await SweetAlertDialog.showConfirm(
       context: context,
-      builder: (BuildContext context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        title: const Text('Limpiar todo'),
-        content: const Text(
-          '¿Está seguro de limpiar todos los productos escaneados?',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancelar'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              setState(() {
-                _productos.clear();
-                _codigoController.clear();
-                _cantidadController.text = '1';
-              });
-              Navigator.pop(context);
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.rojo,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
-              ),
-            ),
-            child: const Text('Limpiar'),
-          ),
-        ],
-      ),
+      title: 'Limpiar todo',
+      message: '¿Está seguro de limpiar todos los productos escaneados?',
+      confirmText: 'Sí, limpiar',
+      cancelText: 'Cancelar',
     );
-  }
 
-  @override
-  void initState() {
-    super.initState();
-    _cantidadController.text = '1';
-  }
-
-  @override
-  void dispose() {
-    _codigoController.dispose();
-    _cantidadController.dispose();
-    super.dispose();
+    if (confirmado == true) {
+      setState(() {
+        _productos.clear();
+        _productosValidados.clear();
+        _codigoController.clear();
+        _cantidadController.text = '1';
+      });
+    }
   }
 
   @override
@@ -156,379 +375,339 @@ class _ScanningScreenState extends State<ScanningScreen> {
     return Scaffold(
       backgroundColor: Colors.grey.shade100,
       appBar: AppBar(
-        title: Text(
-          'Escaneo - ${widget.noteId}',
-          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-        ),
+        title: Text('Escaneo - ${widget.noteId}'),
         backgroundColor: Colors.white,
         foregroundColor: AppColors.azul,
         elevation: 0,
-        centerTitle: false,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
           onPressed: () => Navigator.pop(context),
         ),
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(1),
-          child: Container(height: 1, color: Colors.grey.shade200),
-        ),
       ),
-      body: Column(
+      body: Stack(
         children: [
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.all(12),
-              child: Column(
-                children: [
-                  // Tarjeta de escaneo
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(10),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(0.03),
-                          blurRadius: 4,
-                          offset: const Offset(0, 1),
-                        ),
-                      ],
+          Column(
+            children: [
+              Container(
+                margin: const EdgeInsets.all(12),
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.05),
+                      blurRadius: 8,
                     ),
-                    child: Column(
+                  ],
+                ),
+                child: Column(
+                  children: [
+                    Row(
                       children: [
-                        // Campo Código
-                        TextField(
-                          controller: _codigoController,
-                          enabled: !_isPdaMode,
-                          style: const TextStyle(fontSize: 14),
-                          decoration: InputDecoration(
-                            labelText: 'Código',
-                            labelStyle: TextStyle(
-                              fontSize: 12,
-                              color: Colors.grey.shade600,
-                            ),
-                            hintText: _isPdaMode
-                                ? 'Esperando escaneo PDA...'
-                                : 'Ingrese código',
-                            hintStyle: TextStyle(
-                              fontSize: 12,
-                              color: Colors.grey.shade400,
-                            ),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            focusedBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(8),
-                              borderSide: const BorderSide(
-                                color: AppColors.azul,
-                                width: 1.5,
-                              ),
-                            ),
-                            contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 10,
-                            ),
-                            isDense: true,
-                            suffixIcon: IconButton(
-                              onPressed: _handleToggleMode,
-                              icon: Icon(
-                                _isPdaMode
-                                    ? Icons.qr_code_scanner
-                                    : Icons.keyboard,
-                                size: 18,
+                        Expanded(
+                          child: TextField(
+                            controller: _codigoController,
+                            focusNode: _codigoFocusNode,
+                            enabled: true,
+                            readOnly: _isPdaMode,
+                            style: const TextStyle(fontSize: 14),
+                            decoration: InputDecoration(
+                              labelText: 'Código',
+                              labelStyle: TextStyle(
                                 color: _isPdaMode
-                                    ? AppColors.rojo
-                                    : AppColors.azul,
+                                    ? AppColors.rojo.withOpacity(0.7)
+                                    : Colors.grey.shade600,
                               ),
-                              padding: EdgeInsets.zero,
-                              constraints: const BoxConstraints(),
+                              hintText: _isPdaMode
+                                  ? 'Presiona el botón físico para escanear'
+                                  : 'Escribe o escanea el código',
+                              hintStyle: TextStyle(
+                                fontSize: 12,
+                                color: _isPdaMode
+                                    ? AppColors.rojo.withOpacity(0.5)
+                                    : Colors.grey.shade400,
+                                fontStyle: FontStyle.italic,
+                              ),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              focusedBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(8),
+                                borderSide: const BorderSide(
+                                  color: AppColors.azul,
+                                  width: 1.5,
+                                ),
+                              ),
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 10,
+                              ),
+                              suffixIcon: IconButton(
+                                onPressed: _handleToggleMode,
+                                icon: Icon(
+                                  _isPdaMode
+                                      ? Icons.qr_code_scanner
+                                      : Icons.keyboard,
+                                  size: 20,
+                                  color: _isPdaMode
+                                      ? AppColors.rojo
+                                      : AppColors.azul,
+                                ),
+                                tooltip: _isPdaMode
+                                    ? 'Cambiar a modo manual'
+                                    : 'Cambiar a modo escáner',
+                              ),
                             ),
                           ),
                         ),
-                        const SizedBox(height: 8),
-                        // Fila Cantidad + Botón
-                        Row(
-                          children: [
-                            Expanded(
-                              flex: 2,
-                              child: TextField(
-                                controller: _cantidadController,
-                                keyboardType: TextInputType.number,
-                                style: const TextStyle(fontSize: 14),
-                                decoration: InputDecoration(
-                                  labelText: 'Cantidad',
-                                  labelStyle: TextStyle(
-                                    fontSize: 12,
-                                    color: Colors.grey.shade600,
-                                  ),
-                                  border: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  focusedBorder: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(8),
-                                    borderSide: const BorderSide(
-                                      color: AppColors.azul,
-                                      width: 1.5,
-                                    ),
-                                  ),
-                                  contentPadding: const EdgeInsets.symmetric(
-                                    horizontal: 12,
-                                    vertical: 10,
-                                  ),
-                                  isDense: true,
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          flex: 2,
+                          child: TextField(
+                            controller: _cantidadController,
+                            keyboardType: TextInputType.number,
+                            style: const TextStyle(fontSize: 14),
+                            decoration: InputDecoration(
+                              labelText: 'Cantidad',
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              focusedBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(8),
+                                borderSide: const BorderSide(
+                                  color: AppColors.azul,
+                                  width: 1.5,
                                 ),
                               ),
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 10,
+                              ),
                             ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              flex: 1,
-                              child: SizedBox(
-                                height: 42,
-                                child: ElevatedButton(
-                                  onPressed: _handleLoad,
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: Colors.transparent,
-                                    elevation: 0,
-                                    padding: EdgeInsets.zero,
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(8),
-                                    ),
-                                  ),
-                                  child: Ink(
-                                    decoration: BoxDecoration(
-                                      gradient: AppColors.gradienteBoton,
-                                      borderRadius: BorderRadius.circular(8),
-                                    ),
-                                    child: const Center(
-                                      child: Text(
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          flex: 1,
+                          child: GestureDetector(
+                            onTap: () {
+                              print('🔴🔴🔴 BOTÓN AGREGAR PRESIONADO 🔴🔴🔴');
+                              if (!_isLoading) {
+                                _handleLoad();
+                              }
+                            },
+                            child: Container(
+                              height: 48,
+                              decoration: BoxDecoration(
+                                gradient: AppColors.gradienteBoton,
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Center(
+                                child: _isLoading
+                                    ? const SizedBox(
+                                        width: 20,
+                                        height: 20,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          color: Colors.white,
+                                        ),
+                                      )
+                                    : const Text(
                                         'Agregar',
                                         style: TextStyle(
-                                          fontSize: 13,
+                                          fontSize: 14,
                                           fontWeight: FontWeight.w600,
                                           color: Colors.white,
                                         ),
                                       ),
-                                    ),
-                                  ),
-                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: Container(
+                  margin: const EdgeInsets.symmetric(horizontal: 12),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.grey.shade200),
+                  ),
+                  child: Column(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 10,
+                        ),
+                        decoration: BoxDecoration(
+                          color: AppColors.azul,
+                          borderRadius: const BorderRadius.vertical(
+                            top: Radius.circular(11),
+                          ),
+                        ),
+                        child: const Row(
+                          children: [
+                            Expanded(
+                              flex: 3,
+                              child: Text(
+                                'Código',
+                                style: TextStyle(color: Colors.white),
+                              ),
+                            ),
+                            Expanded(
+                              flex: 1,
+                              child: Text(
+                                'Cantidad',
+                                style: TextStyle(color: Colors.white),
+                                textAlign: TextAlign.center,
+                              ),
+                            ),
+                            SizedBox(
+                              width: 50,
+                              child: Text(
+                                '',
+                                style: TextStyle(color: Colors.white),
                               ),
                             ),
                           ],
                         ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-                  // Tabla de productos escaneados
-                  SizedBox(
-                    height: 200,
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: Colors.grey.shade200),
                       ),
-                      child: Column(
-                        children: [
-                          // Encabezado
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 10,
-                              vertical: 8,
-                            ),
-                            decoration: BoxDecoration(
-                              color: AppColors.azul,
-                              borderRadius: const BorderRadius.vertical(
-                                top: Radius.circular(9),
-                              ),
-                            ),
-                            child: const Row(
-                              children: [
-                                Expanded(
-                                  flex: 3,
-                                  child: Text(
-                                    'Código',
-                                    style: TextStyle(
-                                      color: Colors.white,
-                                      fontWeight: FontWeight.w600,
-                                      fontSize: 12,
-                                    ),
-                                  ),
+                      Expanded(
+                        child: _productos.isEmpty
+                            ? const Center(
+                                child: Text(
+                                  'No hay productos escaneados',
+                                  style: TextStyle(color: Colors.grey),
                                 ),
-                                Expanded(
-                                  flex: 1,
-                                  child: Text(
-                                    'Cantidad',
-                                    style: TextStyle(
-                                      color: Colors.white,
-                                      fontWeight: FontWeight.w600,
-                                      fontSize: 12,
+                              )
+                            : ListView.builder(
+                                itemCount: _productos.length,
+                                itemBuilder: (context, index) {
+                                  final producto = _productos[index];
+                                  final bool validado = _productosValidados[producto.codigo] ?? false;
+                                  return Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 12,
+                                      vertical: 10,
                                     ),
-                                    textAlign: TextAlign.center,
-                                  ),
-                                ),
-                                SizedBox(
-                                  width: 40,
-                                  child: Text(
-                                    'Acción',
-                                    style: TextStyle(
-                                      color: Colors.white,
-                                      fontWeight: FontWeight.w600,
-                                      fontSize: 12,
-                                    ),
-                                    textAlign: TextAlign.center,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          // Lista de productos
-                          Expanded(
-                            child: _productos.isEmpty
-                                ? const Center(
-                                    child: Text(
-                                      'No hay productos',
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        color: Colors.grey,
+                                    decoration: BoxDecoration(
+                                      border: Border(
+                                        bottom: BorderSide(
+                                          color: Colors.grey.shade100,
+                                        ),
                                       ),
                                     ),
-                                  )
-                                : ListView.builder(
-                                    itemCount: _productos.length,
-                                    itemBuilder: (context, index) {
-                                      final producto = _productos[index];
-                                      return Container(
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 10,
-                                          vertical: 8,
-                                        ),
-                                        decoration: BoxDecoration(
-                                          border: Border(
-                                            bottom: BorderSide(
-                                              color: Colors.grey.shade100,
+                                    child: Row(
+                                      children: [
+                                        Expanded(
+                                          flex: 3,
+                                          child: Text(
+                                            producto.codigo,
+                                            style: const TextStyle(
+                                              fontSize: 12,
                                             ),
                                           ),
                                         ),
-                                        child: Row(
-                                          children: [
-                                            Expanded(
-                                              flex: 3,
-                                              child: Text(
-                                                producto.codigo,
-                                                style: const TextStyle(
-                                                  fontSize: 12,
-                                                ),
-                                                maxLines: 1,
-                                                overflow: TextOverflow.ellipsis,
-                                              ),
+                                        Expanded(
+                                          flex: 1,
+                                          child: Text(
+                                            producto.cantidad.toString(),
+                                            style: const TextStyle(
+                                              fontSize: 12,
+                                              fontWeight: FontWeight.w500,
                                             ),
-                                            Expanded(
-                                              flex: 1,
-                                              child: Text(
-                                                producto.cantidad.toString(),
-                                                style: const TextStyle(
-                                                  fontSize: 12,
-                                                  fontWeight: FontWeight.w500,
-                                                ),
-                                                textAlign: TextAlign.center,
-                                              ),
-                                            ),
-                                            SizedBox(
-                                              width: 40,
-                                              child: IconButton(
-                                                onPressed: () => _handleRemove(
-                                                  producto.codigo,
-                                                ),
-                                                icon: Icon(
-                                                  Icons.delete_outline,
-                                                  size: 16,
+                                            textAlign: TextAlign.center,
+                                          ),
+                                        ),
+                                        SizedBox(
+                                          width: 50,
+                                          child: validado
+                                              ? IconButton(
+                                                  onPressed: () => _handleRemove(producto.codigo),
+                                                  icon: Icon(
+                                                    Icons.delete_outline,
+                                                    size: 18,
+                                                    color: AppColors.rojo,
+                                                  ),
+                                                  padding: EdgeInsets.zero,
+                                                )
+                                              : const Icon(
+                                                  Icons.cancel,
+                                                  size: 18,
                                                   color: AppColors.rojo,
                                                 ),
-                                                padding: EdgeInsets.zero,
-                                                constraints:
-                                                    const BoxConstraints(),
-                                              ),
-                                            ),
-                                          ],
                                         ),
-                                      );
-                                    },
-                                  ),
+                                      ],
+                                    ),
+                                  );
+                                },
+                              ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.all(12),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: ElevatedButton(
+                        onPressed: _productos.isNotEmpty ? _handleClear : null,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.rojo,
+                          disabledBackgroundColor: Colors.grey.shade300,
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
                           ),
-                        ],
+                        ),
+                        child: const Text(
+                          'Limpiar',
+                          style: TextStyle(color: Colors.white),
+                        ),
                       ),
                     ),
-                  ),
-                  const SizedBox(height: 20),
-                  SafeArea(
-                    top: false,
-                    bottom: true,
-                    minimum: const EdgeInsets.only(bottom: 32),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 12),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          SizedBox(
-                            width: 120,
-                            height: 40,
-                            child: ElevatedButton(
-                              onPressed: _productos.isNotEmpty
-                                  ? _handleClear
-                                  : null,
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: AppColors.rojo,
-                                disabledBackgroundColor: Colors.grey.shade300,
-                                padding: EdgeInsets.zero,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                              ),
-                              child: const Text(
-                                'Limpiar',
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w600,
-                                  color: Colors.white,
-                                ),
-                              ),
-                            ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: ElevatedButton(
+                        onPressed: _productos.isNotEmpty ? _handleSave : null,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.azul,
+                          disabledBackgroundColor: Colors.grey.shade300,
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
                           ),
-                          const SizedBox(width: 16),
-                          SizedBox(
-                            width: 120,
-                            height: 40,
-                            child: ElevatedButton(
-                              onPressed: _productos.isNotEmpty
-                                  ? _handleSave
-                                  : null,
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: AppColors.azul,
-                                disabledBackgroundColor: Colors.grey.shade300,
-                                padding: EdgeInsets.zero,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                              ),
-                              child: const Text(
-                                'Guardar',
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w600,
-                                  color: Colors.white,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
+                        ),
+                        child: const Text(
+                          'Guardar',
+                          style: TextStyle(color: Colors.white),
+                        ),
                       ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
+              ),
+            ],
+          ),
+          if (_isLoading)
+            Container(
+              color: Colors.black.withOpacity(0.5),
+              child: const Center(
+                child: CircularProgressIndicator(color: Colors.white),
               ),
             ),
-          ),
         ],
       ),
     );

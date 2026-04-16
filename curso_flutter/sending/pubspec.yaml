@@ -1,6 +1,6 @@
 name: sending
 description: "A new Flutter project."
-publish_to: 'none'
+publish_to: "none"
 version: 0.1.0+1
 
 environment:
@@ -10,8 +10,11 @@ dependencies:
   flutter:
     sdk: flutter
   shared_preferences: ^2.2.2
-  http: ^1.2.0   # ← Agrega esta línea
-  
+  http: ^1.2.0 # ← Agrega esta línea
+  cookie_jar: ^4.0.0
+  dio: ^5.4.0
+  dio_cookie_manager: ^3.0.0
+  path_provider: ^2.1.0   # ← Agregar esta línea
 dev_dependencies:
   flutter_test:
     sdk: flutter

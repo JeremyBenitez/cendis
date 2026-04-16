@@ -1,5 +1,8 @@
-import 'dart:convert';
-import 'package:http/http.dart' as http;
+import 'dart:io';
+import 'package:dio/dio.dart';
+import 'package:dio_cookie_manager/dio_cookie_manager.dart';
+import 'package:cookie_jar/cookie_jar.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../config/api_config.dart';
 
@@ -8,104 +11,126 @@ class ApiClient {
   
   static final ApiClient _instance = ApiClient._internal();
   factory ApiClient() => _instance;
-  ApiClient._internal();
+  ApiClient._internal() {
+    _initDio();
+  }
   
+  late Dio _dio;
   String? _authToken;
   
   String? get authToken => _authToken;
+  
+  void _initDio() async {
+    _dio = Dio(BaseOptions(
+      baseUrl: baseUrl,
+      contentType: ApiConfig.contentType,
+      connectTimeout: const Duration(seconds: ApiConfig.connectionTimeout),
+      receiveTimeout: const Duration(seconds: ApiConfig.receiveTimeout),
+      headers: {
+        'Accept': ApiConfig.accept,
+      },
+    ));
+    
+    // Obtener directorio temporal para cookies (evita problemas de permisos)
+    final Directory tempDir = await getTemporaryDirectory();
+    final String cookiesPath = '${tempDir.path}/cookies';
+    
+    // Configurar cookie jar persistente
+    final cookieJar = PersistCookieJar(
+      storage: FileStorage(cookiesPath),
+      ignoreExpires: true,
+    );
+    _dio.interceptors.add(CookieManager(cookieJar));
+    
+    // Logging interceptor para depuración
+    _dio.interceptors.add(InterceptorsWrapper(
+      onRequest: (options, handler) {
+        print('📤 ${options.method} a: ${options.uri}');
+        print('📤 Headers: ${options.headers}');
+        if (options.data != null) {
+          print('📤 Body: ${options.data}');
+        }
+        return handler.next(options);
+      },
+      onResponse: (response, handler) {
+        print('📥 Response status: ${response.statusCode}');
+        print('📥 Response data: ${response.data}');
+        return handler.next(response);
+      },
+      onError: (error, handler) {
+        print('❌ Error: ${error.message}');
+        if (error.response != null) {
+          print('❌ Status: ${error.response?.statusCode}');
+          print('❌ Data: ${error.response?.data}');
+        }
+        return handler.next(error);
+      },
+    ));
+  }
   
   Future<void> setAuthToken(String token) async {
     _authToken = token;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('auth_token', token);
+    _dio.options.headers['Authorization'] = 'Bearer $token';
   }
   
   Future<void> loadAuthToken() async {
     final prefs = await SharedPreferences.getInstance();
     _authToken = prefs.getString('auth_token');
+    if (_authToken != null) {
+      _dio.options.headers['Authorization'] = 'Bearer $_authToken';
+    }
   }
   
   Future<void> clearAuthToken() async {
     _authToken = null;
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('auth_token');
-  }
-  
-  Map<String, String> _buildHeaders() {
-    final headers = {
-      'Content-Type': ApiConfig.contentType,
-      'Accept': ApiConfig.accept,
-    };
-    
-    if (_authToken != null) {
-      headers['Authorization'] = 'Bearer $_authToken';
-    }
-    
-    return headers;
+    _dio.options.headers.remove('Authorization');
   }
   
   Future<dynamic> post(String endpoint, Map<String, dynamic> data) async {
-    final url = Uri.parse('$baseUrl$endpoint');
+    await loadAuthToken();
     
-    print('📤 POST a: $url');
-    print('📤 Body: $data');
+    try {
+      final response = await _dio.post(endpoint, data: data);
+      return response.data;
+    } on DioException catch (e) {
+      throw ApiException(
+        statusCode: e.response?.statusCode ?? 500,
+        message: e.message ?? 'Error en la petición',
+        errors: e.response?.data,
+      );
+    }
+  }
+  
+  Future<dynamic> put(String endpoint, Map<String, dynamic> data) async {
+    await loadAuthToken();
     
-    final response = await http.post(
-      url,
-      headers: _buildHeaders(),
-      body: jsonEncode(data),
-    ).timeout(
-      Duration(seconds: ApiConfig.receiveTimeout),
-      onTimeout: () => throw Exception('Tiempo de conexión agotado'),
-    );
-    
-    print('📥 Response status: ${response.statusCode}');
-    print('📥 Response body: ${response.body}');
-    
-    return _handleResponse(response);
+    try {
+      final response = await _dio.put(endpoint, data: data);
+      return response.data;
+    } on DioException catch (e) {
+      throw ApiException(
+        statusCode: e.response?.statusCode ?? 500,
+        message: e.message ?? 'Error en la petición',
+        errors: e.response?.data,
+      );
+    }
   }
   
   Future<dynamic> get(String endpoint) async {
-    final url = Uri.parse('$baseUrl$endpoint');
+    await loadAuthToken();
     
-    print('📤 GET a: $url');
-    
-    final response = await http.get(
-      url,
-      headers: _buildHeaders(),
-    ).timeout(
-      Duration(seconds: ApiConfig.receiveTimeout),
-      onTimeout: () => throw Exception('Tiempo de conexión agotado'),
-    );
-    
-    print('📥 Response status: ${response.statusCode}');
-    print('📥 Response body: ${response.body}');
-    
-    return _handleResponse(response);
-  }
-  
-  dynamic _handleResponse(http.Response response) {
-    final decodedResponse = jsonDecode(response.body);
-    
-    if (response.statusCode >= 200 && response.statusCode < 300) {
-      return decodedResponse;
-    } else {
-      // Extraer mensaje personalizado si existe
-      String errorMessage = 'Error en la petición';
-      dynamic errorData = null;
-      
-      if (decodedResponse is Map) {
-        errorMessage = decodedResponse['Mensaje'] ?? 
-                       decodedResponse['message'] ?? 
-                       decodedResponse['error'] ??
-                       'Error en la petición';
-        errorData = decodedResponse;
-      }
-      
+    try {
+      final response = await _dio.get(endpoint);
+      return response.data;
+    } on DioException catch (e) {
       throw ApiException(
-        statusCode: response.statusCode,
-        message: errorMessage,
-        errors: errorData,
+        statusCode: e.response?.statusCode ?? 500,
+        message: e.message ?? 'Error en la petición',
+        errors: e.response?.data,
       );
     }
   }
