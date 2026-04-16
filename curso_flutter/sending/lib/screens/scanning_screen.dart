@@ -11,6 +11,7 @@ import '../widgets/sweet_alert_dialog.dart';
 class ScanningScreen extends StatefulWidget {
   final String noteId;
   final Tienda tienda;
+  final String usuario;
   final List<ProductoData>? productosNota;
   final List<ProductoEscaneado>? productosPrecargados;
 
@@ -18,6 +19,7 @@ class ScanningScreen extends StatefulWidget {
     super.key,
     required this.noteId,
     required this.tienda,
+    required this.usuario,
     this.productosNota,
     this.productosPrecargados,
   });
@@ -35,7 +37,7 @@ class _ScanningScreenState extends State<ScanningScreen> {
   bool _isPdaMode = true;
   bool _isLoading = false;
   List<ProductoEscaneado> _productos = [];
-  Map<String, bool> _productosValidados = {}; // ← Nuevo mapa para validación
+  Map<String, bool> _productosValidados = {};
 
   int get totalProductos => _productos.length;
 
@@ -55,7 +57,6 @@ class _ScanningScreenState extends State<ScanningScreen> {
     if (widget.productosPrecargados != null &&
         widget.productosPrecargados!.isNotEmpty) {
       _productos = List.from(widget.productosPrecargados!);
-      // Marcar productos precargados como válidos
       for (final producto in _productos) {
         _productosValidados[producto.codigo] = true;
       }
@@ -109,61 +110,10 @@ class _ScanningScreenState extends State<ScanningScreen> {
     });
   }
 
-  void _mostrarModalCantidadIncorrecta({
-    required String codigo,
-    required int cantidadEscaneada,
-    required int cantidadEsperada,
-  }) {
-    SweetAlertDialog.showWarning(
-      context: context,
-      title: 'Cantidad Incorrecta',
-      message: 'La cantidad escaneada no coincide con lo esperado',
-      detailTitle: 'Código: $codigo',
-      detailValue1: cantidadEscaneada.toString(),
-      detailValue2: cantidadEsperada.toString(),
-      button1Text: 'Cambiar manualmente',
-      button2Text: 'Validar',
-      onButton1Pressed: () {
-        Navigator.pop(context);
-        _abrirAjusteManual(codigo, cantidadEsperada);
-      },
-      onButton2Pressed: () async {
-        Navigator.pop(context);
-        
-        setState(() {
-          _isLoading = true;
-        });
-
-        final response = await _escaneoService.escanearProducto(
-          cantidad: cantidadEscaneada,
-          codigo: codigo,
-          documento: widget.noteId,
-          tienda: widget.tienda.nombre,
-          force: '',
-        );
-
-        setState(() {
-          _isLoading = false;
-        });
-
-        if (response.success) {
-          _agregarProductoConCantidad(codigo, cantidadEscaneada, validado: true);
-        } else {
-          SweetAlertDialog.showError(
-            context: context,
-            title: 'Error',
-            message: response.message ?? 'Ocurrió un error inesperado',
-            buttonText: 'Entendido',
-          );
-        }
-      },
-    );
-  }
-
-  void _abrirAjusteManual(String codigo, int cantidadEsperada) {
-    final TextEditingController ajusteController = TextEditingController(
-      text: cantidadEsperada.toString(),
-    );
+  // Diálogo para ajuste manual (ingresar nueva cantidad)
+  void _abrirAjusteManual(String codigo, int cantidadSugerida) {
+    final TextEditingController ajusteController =
+        TextEditingController(text: cantidadSugerida.toString());
 
     showDialog(
       context: context,
@@ -183,7 +133,7 @@ class _ScanningScreenState extends State<ScanningScreen> {
                 controller: ajusteController,
                 keyboardType: TextInputType.number,
                 decoration: InputDecoration(
-                  labelText: 'Cantidad correcta',
+                  labelText: 'Nueva cantidad',
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(8),
                   ),
@@ -199,9 +149,9 @@ class _ScanningScreenState extends State<ScanningScreen> {
             ElevatedButton(
               onPressed: () {
                 final nuevaCantidad =
-                    int.tryParse(ajusteController.text) ?? cantidadEsperada;
+                    int.tryParse(ajusteController.text) ?? cantidadSugerida;
                 Navigator.pop(context);
-                _agregarProductoConCantidad(codigo, nuevaCantidad, validado: true);
+                _enviarConForce(codigo, nuevaCantidad, force: 'YES');
               },
               style: ElevatedButton.styleFrom(backgroundColor: AppColors.azul),
               child: const Text('Aceptar'),
@@ -210,6 +160,74 @@ class _ScanningScreenState extends State<ScanningScreen> {
         );
       },
     );
+  }
+
+  void _mostrarModalCantidadIncorrecta({
+    required String codigo,
+    required int cantidadEscaneada,
+    required int cantidadEsperada,
+  }) {
+    SweetAlertDialog.showWarning(
+      context: context,
+      title: 'Cantidad Incorrecta',
+      message: 'La cantidad escaneada no coincide con lo esperado',
+      detailTitle: 'Código: $codigo',
+      detailValue1: cantidadEscaneada.toString(),
+      detailValue2: cantidadEsperada.toString(),
+      button1Text: 'Cambiar manualmente',
+      button2Text: 'Validar',
+      onButton1Pressed: () {
+        Navigator.pop(context);
+        // Abrir diálogo para que el usuario ingrese la cantidad deseada
+        _abrirAjusteManual(codigo, cantidadEsperada);
+      },
+      onButton2Pressed: () async {
+        Navigator.pop(context);
+        _enviarConForce(codigo, cantidadEscaneada, force: 'no');
+      },
+    );
+  }
+
+  void _enviarConForce(String codigo, int nuevaCantidad, {String force = 'YES'}) async {
+    print('🚨 ENVIANDO CON force = $force 🚨');
+    print('Código: $codigo, Nueva cantidad: $nuevaCantidad');
+    
+    setState(() {
+      _isLoading = true;
+    });
+
+    final response = await _escaneoService.escanearProducto(
+      cantidad: nuevaCantidad,
+      codigo: codigo,
+      documento: widget.noteId,
+      tienda: widget.tienda.nombre,
+      force: force,
+      usuario: widget.usuario,
+    );
+
+    setState(() {
+      _isLoading = false;
+    });
+
+    if (response.success) {
+      _agregarProductoConCantidad(codigo, nuevaCantidad, validado: true);
+    } else {
+      // Si el backend devuelve cantidad_correcta, mostrar modal nuevamente
+      if (response.cantidadCorrecta != null) {
+        _mostrarModalCantidadIncorrecta(
+          codigo: codigo,
+          cantidadEscaneada: nuevaCantidad,
+          cantidadEsperada: response.cantidadCorrecta!,
+        );
+      } else {
+        SweetAlertDialog.showError(
+          context: context,
+          title: 'Error',
+          message: response.message ?? 'Ocurrió un error inesperado',
+          buttonText: 'Entendido',
+        );
+      }
+    }
   }
 
   void _agregarProductoConCantidad(String codigo, int cantidad, {bool validado = true}) {
@@ -304,7 +322,8 @@ class _ScanningScreenState extends State<ScanningScreen> {
       codigo: codigo,
       documento: widget.noteId,
       tienda: widget.tienda.nombre,
-      force: '',
+      force: 'no',
+      usuario: widget.usuario,
     );
 
     setState(() {
@@ -313,16 +332,25 @@ class _ScanningScreenState extends State<ScanningScreen> {
 
     print('📥 Respuesta escaneo - success: ${response.success}');
     print('📥 Mensaje: ${response.message}');
+    print('📥 Cantidad correcta sugerida: ${response.cantidadCorrecta}');
 
     if (response.success) {
       _agregarProductoConCantidad(codigo, cantidad, validado: true);
     } else {
-      SweetAlertDialog.showError(
-        context: context,
-        title: 'Error al escanear',
-        message: response.message ?? 'Ocurrió un error inesperado',
-        buttonText: 'Entendido',
-      );
+      if (response.cantidadCorrecta != null) {
+        _mostrarModalCantidadIncorrecta(
+          codigo: codigo,
+          cantidadEscaneada: cantidad,
+          cantidadEsperada: response.cantidadCorrecta!,
+        );
+      } else {
+        SweetAlertDialog.showError(
+          context: context,
+          title: 'Error al escanear',
+          message: response.message ?? 'Ocurrió un error inesperado',
+          buttonText: 'Entendido',
+        );
+      }
     }
   }
 

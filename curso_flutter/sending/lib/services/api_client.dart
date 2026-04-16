@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:dio_cookie_manager/dio_cookie_manager.dart';
@@ -109,20 +110,25 @@ class ApiClient {
     }
   }
   
-  Future<dynamic> put(String endpoint, Map<String, dynamic> data) async {
-    await loadAuthToken();
-    
-    try {
-      final response = await _dio.put(endpoint, data: data);
-      return response.data;
-    } on DioException catch (e) {
-      throw ApiException(
-        statusCode: e.response?.statusCode ?? 500,
-        message: e.message ?? 'Error en la petición',
-        errors: e.response?.data,
-      );
-    }
+Future<dynamic> put(String endpoint, Map<String, dynamic> data) async {
+  await loadAuthToken();
+  print('📤 PUT a: $baseUrl$endpoint');
+  print('📤 Headers: ${_dio.options.headers}');
+  print('📤 Body: ${jsonEncode(data)}');  // ← Asegúrate de importar 'dart:convert' 
+  try {
+    final response = await _dio.put(endpoint, data: data);
+    return response.data;
+  } on DioException catch (e) {
+    print('❌ PUT Error: ${e.message}');
+    print('❌ Status: ${e.response?.statusCode}');
+    print('❌ Data: ${e.response?.data}');
+    throw ApiException(
+      statusCode: e.response?.statusCode ?? 500,
+      message: e.message ?? 'Error en la petición',
+      errors: e.response?.data,
+    );
   }
+}
   
   Future<dynamic> get(String endpoint) async {
     await loadAuthToken();
