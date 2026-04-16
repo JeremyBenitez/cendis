@@ -1,10 +1,16 @@
+// ignore_for_file: strict_top_level_inference, avoid_unnecessary_containers
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:sending/class/LocalStorage.dart';
+import 'package:sending/class/RespuestaApiHelper.dart';
+import 'package:sending/services/depositos_service.dart';
 import '../utils/app_colors.dart';
 import '../models/tienda.dart';
 import 'orders_list_screen.dart';
 
 class OperationSelectionScreen extends StatefulWidget {
+
   final String usuario;
   final Tienda tienda;
   
@@ -19,7 +25,10 @@ class OperationSelectionScreen extends StatefulWidget {
 }
 
 class _OperationSelectionScreenState extends State<OperationSelectionScreen> {
+
   String? _selectedOperation;
+  List<dynamic> listaDepositos = [];
+  Map<String, dynamic>? depositoSeleccionado; // Cambiado de String a Map
   
   final List<Map<String, dynamic>> _operations = [
     {
@@ -39,6 +48,7 @@ class _OperationSelectionScreenState extends State<OperationSelectionScreen> {
   ];
 
   void _handleContinue() {
+
     if (_selectedOperation != null) {
       Navigator.pushReplacement(
         context,
@@ -53,8 +63,167 @@ class _OperationSelectionScreenState extends State<OperationSelectionScreen> {
     }
   }
 
+  //mostrar modal
+  mostrarModal(BuildContext context) {
+
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(15),
+          ),
+          title: const Text(
+            'Depósito de origen',
+            textAlign: TextAlign.center,
+          ),
+          content: Column(
+           
+            mainAxisSize: MainAxisSize.min,// Esto hace que el contenido se ajuste al tamaño necesario 
+            children: [
+              Text.rich(
+                TextSpan(
+                  text: 'Seleccione el depósito en el cual se recibirán las notas para ',
+                  style: const TextStyle(color: Colors.black), // Estilo general
+                  children: [
+                    TextSpan(
+                      text: widget.tienda.nombre,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold, // Negrita
+                        color: AppColors.azul,       // Tu color personalizado
+                        fontSize: 16,                // Un poco más grande si quieres
+                      ),
+                    ),
+                    const TextSpan(
+                      text: '.',
+                    ),
+                  ],
+                ),
+                textAlign: TextAlign.justify,
+              ),
+              const SizedBox(height: 20), // Espacio entre el texto y el select
+              
+              DropdownButtonFormField<Map<String, dynamic>>( // Cambiado a Map
+                isExpanded: true,
+                decoration: InputDecoration(
+                  labelText: 'Seleccionar Depósito',
+                  labelStyle: const TextStyle(fontSize: 14),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                ),
+                value: depositoSeleccionado,
+                hint: const Text('Seleccione un depósito'), // Texto cuando no hay selección
+                items: listaDepositos.map((deposito) {
+                  return DropdownMenuItem<Map<String, dynamic>>(
+                    value: deposito, // El valor es el objeto completo
+                    child: Text(
+                      deposito['nombre'], // Mostramos el nombre
+                      style: const TextStyle(fontSize: 14),
+                    ),
+                  );
+                }).toList(),
+                onChanged: (nuevoDeposito) async{
+
+                  setState(() {
+                    depositoSeleccionado = nuevoDeposito; // Guardamos el objeto completo
+                  });
+
+                  await LocalStorage.setJson('deposito', nuevoDeposito!);
+
+                  _handleContinue();
+
+
+                },
+              ),
+            ],
+          ),
+          actions: [
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.rojo,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancelar'),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.azul,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+              onPressed: () {
+                Navigator.pop(context);
+              },
+              child: const Text('Continuar'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  depositos() async{
+
+    try{
+
+      final DepositosService depositosService = DepositosService();
+
+      var response = await depositosService.getDepositos();
+      
+      if(response['status']) {
+
+        setState(() {
+          listaDepositos = response['data'];
+        });
+
+        return;
+
+      }
+      else{
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(response['mensaje'] ?? 'Error desconocido al obtener depósitos.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+
+      }
+
+
+    }
+    catch(e){
+
+      print(e);
+      
+    }
+
+    
+  }
+
+
+
+  @override
+  void initState() {
+    // TODO: implement initState
+    super.initState();
+    depositos();
+  }
+
   @override
   Widget build(BuildContext context) {
+
+    print(widget.tienda.nombre);
+
     return Scaffold(
       body: Container(
         decoration: BoxDecoration(
@@ -160,7 +329,7 @@ class _OperationSelectionScreenState extends State<OperationSelectionScreen> {
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 20),
                   child: ListView.builder(
-                    itemCount: _operations.length,
+                    itemCount: widget.tienda.nombre == "IMPORTADORA" ? _operations.length : _operations.length - 1,
                     itemBuilder: (context, index) {
                       final operation = _operations[index];
                       final isSelected = _selectedOperation == operation['id'];
@@ -169,9 +338,17 @@ class _OperationSelectionScreenState extends State<OperationSelectionScreen> {
                         margin: const EdgeInsets.only(bottom: 16),
                         child: GestureDetector(
                           onTap: () {
+
+                            if(operation['id'] == 'pedidos') {
+
+                              mostrarModal(context);
+                              
+                            }
+                             
                             setState(() {
                               _selectedOperation = operation['id'];
                             });
+
                             HapticFeedback.lightImpact();
                           },
                           child: Container(
@@ -185,20 +362,20 @@ class _OperationSelectionScreenState extends State<OperationSelectionScreen> {
                                 width: isSelected ? 2 : 1,
                               ),
                               boxShadow: isSelected
-                                  ? [
-                                      BoxShadow(
-                                        color: (operation['color'] as Color).withOpacity(0.3),
-                                        blurRadius: 12,
-                                        offset: const Offset(0, 4),
-                                      ),
-                                    ]
-                                  : [
-                                      BoxShadow(
-                                        color: Colors.black.withOpacity(0.05),
-                                        blurRadius: 8,
-                                        offset: const Offset(0, 2),
-                                      ),
-                                    ],
+                              ? [
+                                  BoxShadow(
+                                    color: (operation['color'] as Color).withOpacity(0.3),
+                                    blurRadius: 12,
+                                    offset: const Offset(0, 4),
+                                  ),
+                                ]
+                              : [
+                                  BoxShadow(
+                                    color: Colors.black.withOpacity(0.05),
+                                    blurRadius: 8,
+                                    offset: const Offset(0, 2),
+                                  ),
+                                ],
                             ),
                             child: Stack(
                               children: [

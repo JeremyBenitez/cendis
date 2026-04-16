@@ -11,6 +11,7 @@ class ApiConfig {
   static const String notas = '/notas';
   static const String escanear = '/escanear';
   static const String verificar = '/verificar';
+  static const String depositos = '/yaguara/depositos';// Endpoint victor
   
   // Headers
   static const String contentType = 'application/json';

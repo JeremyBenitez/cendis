@@ -1,4 +1,5 @@
 class LoginResponse {
+  
   final Map<String, dynamic> rawData;
   final bool isSuccess;
   final String? message;  // ← Mensaje amigable para el usuario

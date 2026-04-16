@@ -56,3 +56,6 @@ Thumbs.db
 # Linux
 *~
 .directory
+
+# FVM Version Cache
+.fvm/

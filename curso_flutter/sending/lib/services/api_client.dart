@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../config/api_config.dart';
 
 class ApiClient {
+
   static const String baseUrl = ApiConfig.baseUrl;
   
   static final ApiClient _instance = ApiClient._internal();
@@ -15,23 +16,27 @@ class ApiClient {
   String? get authToken => _authToken;
   
   Future<void> setAuthToken(String token) async {
+
     _authToken = token;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('auth_token', token);
   }
   
   Future<void> loadAuthToken() async {
+
     final prefs = await SharedPreferences.getInstance();
     _authToken = prefs.getString('auth_token');
   }
   
   Future<void> clearAuthToken() async {
+
     _authToken = null;
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('auth_token');
   }
   
   Map<String, String> _buildHeaders() {
+
     final headers = {
       'Content-Type': ApiConfig.contentType,
       'Accept': ApiConfig.accept,
@@ -45,6 +50,7 @@ class ApiClient {
   }
   
   Future<dynamic> post(String endpoint, Map<String, dynamic> data) async {
+
     final url = Uri.parse('$baseUrl$endpoint');
     
     print('📤 POST a: $url');
@@ -66,6 +72,7 @@ class ApiClient {
   }
   
   Future<dynamic> get(String endpoint) async {
+    
     final url = Uri.parse('$baseUrl$endpoint');
     
     print('📤 GET a: $url');
@@ -85,7 +92,10 @@ class ApiClient {
   }
   
   dynamic _handleResponse(http.Response response) {
+    
     final decodedResponse = jsonDecode(response.body);
+
+    print('🔍 Decoded response: $decodedResponse');
     
     if (response.statusCode >= 200 && response.statusCode < 300) {
       return decodedResponse;
@@ -95,10 +105,7 @@ class ApiClient {
       dynamic errorData = null;
       
       if (decodedResponse is Map) {
-        errorMessage = decodedResponse['Mensaje'] ?? 
-                       decodedResponse['message'] ?? 
-                       decodedResponse['error'] ??
-                       'Error en la petición';
+        errorMessage = decodedResponse['Mensaje'] ?? decodedResponse['message'] ?? decodedResponse['error'] ?? 'Error en la petición';
         errorData = decodedResponse;
       }
       
@@ -112,6 +119,7 @@ class ApiClient {
 }
 
 class ApiException implements Exception {
+  
   final int statusCode;
   final String message;
   final dynamic errors;
