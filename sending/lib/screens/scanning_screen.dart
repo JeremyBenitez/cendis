@@ -6,12 +6,12 @@ import '../models/producto_escaneado.dart';
 import '../services/escaneo_service.dart';
 import '../models/nota_response.dart';
 import 'verification_screen.dart';
-import '../widgets/sweet_alert_dialog.dart';
+import '../widgets/response_dialog.dart';
 
 class ScanningScreen extends StatefulWidget {
   final String noteId;
   final Tienda tienda;
-  final String usuario;  // ← AGREGAR
+  final String usuario;
   final List<ProductoData>? productosNota;
   final List<ProductoEscaneado>? productosPrecargados;
 
@@ -19,7 +19,7 @@ class ScanningScreen extends StatefulWidget {
     super.key,
     required this.noteId,
     required this.tienda,
-    required this.usuario,  // ← AGREGAR
+    required this.usuario,
     this.productosNota,
     this.productosPrecargados,
   });
@@ -63,13 +63,12 @@ class _ScanningScreenState extends State<ScanningScreen> {
       print('📦 Productos precargados: ${_productos.length}');
 
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        SweetAlertDialog.showWarning(
+        ResponseDialog.showInfo(
           context: context,
           title: 'Nota ya procesada',
           message:
               'Esta nota ya fue procesada anteriormente. Se han cargado los productos ya escaneados.',
-          button1Text: 'Continuar',
-          onButton1Pressed: () => Navigator.pop(context),
+          buttonText: 'Continuar',
         );
       });
     }
@@ -115,56 +114,122 @@ class _ScanningScreenState extends State<ScanningScreen> {
     required int cantidadEscaneada,
     required int cantidadEsperada,
   }) {
-    SweetAlertDialog.showWarning(
+    showDialog(
       context: context,
-      title: 'Cantidad Incorrecta',
-      message: 'La cantidad escaneada no coincide con lo esperado',
-      detailTitle: 'Código: $codigo',
-      detailValue1: cantidadEscaneada.toString(),
-      detailValue2: cantidadEsperada.toString(),
-      button1Text: 'Cambiar manualmente',
-      button2Text: 'Validar',
-      onButton1Pressed: () {
-        Navigator.pop(context);
-        _abrirAjusteManual(codigo, cantidadEsperada);
-      },
-      onButton2Pressed: () async {
-        Navigator.pop(context);
-        
-        setState(() {
-          _isLoading = true;
-        });
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          title: const Text('Cantidad Incorrecta'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('La cantidad escaneada no coincide con lo esperado'),
+              const SizedBox(height: 12),
+              Text('Código: $codigo'),
+              const SizedBox(height: 8),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceAround,
+                children: [
+                  Column(
+                    children: [
+                      const Text('Escaneado'),
+                      Text(
+                        '$cantidadEscaneada',
+                        style: const TextStyle(
+                          fontSize: 24,
+                          fontWeight: FontWeight.bold,
+                          color: AppColors.rojo,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const Text('vs'),
+                  Column(
+                    children: [
+                      const Text('Esperado'),
+                      Text(
+                        '$cantidadEsperada',
+                        style: const TextStyle(
+                          fontSize: 24,
+                          fontWeight: FontWeight.bold,
+                          color: AppColors.azul,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context);
+                _abrirAjusteManual(codigo, cantidadEsperada);
+              },
+              child: const Text('Cambiar manualmente'),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                Navigator.pop(context);
+                setState(() {
+                  _isLoading = true;
+                });
 
-        final response = await _escaneoService.escanearProducto(
-          cantidad: cantidadEscaneada,
-          codigo: codigo,
-          documento: widget.noteId,
-          tienda: widget.tienda.nombre,
-          force: 'no',
-          usuario: widget.usuario,  // ← AGREGAR
+                final response = await _escaneoService.escanearProducto(
+                  cantidad: cantidadEscaneada,
+                  codigo: codigo,
+                  documento: widget.noteId,
+                  tienda: widget.tienda.nombre,
+                  force: 'no',
+                  usuario: widget.usuario,
+                );
+
+                setState(() {
+                  _isLoading = false;
+                });
+
+                if (response.success) {
+                  _agregarProductoConCantidad(
+                    codigo,
+                    cantidadEscaneada,
+                    validado: true,
+                  );
+                } else {
+                  if (response.cantidadCorrecta != null) {
+                    _mostrarModalCantidadIncorrecta(
+                      codigo: codigo,
+                      cantidadEscaneada: cantidadEscaneada,
+                      cantidadEsperada: response.cantidadCorrecta!,
+                    );
+                  } else {
+                    ResponseDialog.showError(
+                      context: context,
+                      title: 'Error del servidor',
+                      message:
+                          response.message ?? 'Ocurrió un error inesperado',
+                      buttonText: 'Entendido',
+                    );
+                  }
+                }
+              },
+              style: ElevatedButton.styleFrom(backgroundColor: AppColors.azul),
+              child: const Text('Validar'),
+            ),
+          ],
         );
-
-        setState(() {
-          _isLoading = false;
-        });
-
-        if (response.success) {
-          _agregarProductoConCantidad(codigo, cantidadEscaneada, validado: true);
-        } else {
-          SweetAlertDialog.showError(
-            context: context,
-            title: 'Error',
-            message: response.message ?? 'Ocurrió un error inesperado',
-            buttonText: 'Entendido',
-          );
-        }
       },
     );
   }
 
   void _abrirAjusteManual(String codigo, int cantidadEsperada) {
+    final cantidadInicial = cantidadEsperada == 0 ? 1 : cantidadEsperada;
+
     final TextEditingController ajusteController = TextEditingController(
-      text: cantidadEsperada.toString(),
+      text: cantidadInicial.toString(),
     );
 
     showDialog(
@@ -181,11 +246,18 @@ class _ScanningScreenState extends State<ScanningScreen> {
             children: [
               Text('Código: $codigo'),
               const SizedBox(height: 12),
+              if (cantidadEsperada == 0)
+                const Text(
+                  'Este código ya fue completado.\nPuedes agregar unidades adicionales:',
+                  style: TextStyle(fontSize: 12, color: Colors.orange),
+                  textAlign: TextAlign.center,
+                ),
+              const SizedBox(height: 12),
               TextField(
                 controller: ajusteController,
                 keyboardType: TextInputType.number,
                 decoration: InputDecoration(
-                  labelText: 'Cantidad correcta',
+                  labelText: 'Nueva cantidad',
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(8),
                   ),
@@ -200,8 +272,16 @@ class _ScanningScreenState extends State<ScanningScreen> {
             ),
             ElevatedButton(
               onPressed: () {
-                final nuevaCantidad =
-                    int.tryParse(ajusteController.text) ?? cantidadEsperada;
+                final nuevaCantidad = int.tryParse(ajusteController.text) ?? 1;
+                if (nuevaCantidad <= 0) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('La cantidad debe ser mayor a 0'),
+                      backgroundColor: AppColors.rojo,
+                    ),
+                  );
+                  return;
+                }
                 Navigator.pop(context);
                 _enviarConForce(codigo, nuevaCantidad);
               },
@@ -215,9 +295,9 @@ class _ScanningScreenState extends State<ScanningScreen> {
   }
 
   void _enviarConForce(String codigo, int nuevaCantidad) async {
-    print('🚨 ENVIANDO CON force = YES 🚨');
+    print('🚨 ENVIANDO CON force = yes 🚨');
     print('Código: $codigo, Nueva cantidad: $nuevaCantidad');
-    
+
     setState(() {
       _isLoading = true;
     });
@@ -227,8 +307,8 @@ class _ScanningScreenState extends State<ScanningScreen> {
       codigo: codigo,
       documento: widget.noteId,
       tienda: widget.tienda.nombre,
-      force: 'YES',
-      usuario: widget.usuario,  // ← AGREGAR
+      force: 'yes',
+      usuario: widget.usuario,
     );
 
     setState(() {
@@ -236,6 +316,12 @@ class _ScanningScreenState extends State<ScanningScreen> {
     });
 
     if (response.success) {
+      ResponseDialog.showSuccess(
+        context: context,
+        title: '¡Producto Actualizado!',
+        message: response.message ?? 'Producto actualizado correctamente',
+        buttonText: 'Continuar',
+      );
       _agregarProductoConCantidad(codigo, nuevaCantidad, validado: true);
     } else {
       if (response.cantidadCorrecta != null) {
@@ -245,9 +331,9 @@ class _ScanningScreenState extends State<ScanningScreen> {
           cantidadEsperada: response.cantidadCorrecta!,
         );
       } else {
-        SweetAlertDialog.showError(
+        ResponseDialog.showError(
           context: context,
-          title: 'Error',
+          title: 'Error del servidor',
           message: response.message ?? 'Ocurrió un error inesperado',
           buttonText: 'Entendido',
         );
@@ -255,7 +341,11 @@ class _ScanningScreenState extends State<ScanningScreen> {
     }
   }
 
-  void _agregarProductoConCantidad(String codigo, int cantidad, {bool validado = true}) {
+  void _agregarProductoConCantidad(
+    String codigo,
+    int cantidad, {
+    bool validado = true,
+  }) {
     print('📦 Agregando producto: $codigo x $cantidad (validado: $validado)');
     print('📦 Productos actuales antes: ${_productos.length}');
 
@@ -280,7 +370,7 @@ class _ScanningScreenState extends State<ScanningScreen> {
     print('📦 Productos actuales después: ${_productos.length}');
     print('📦 Validados: $_productosValidados');
 
-    SweetAlertDialog.showSuccess(
+    ResponseDialog.showSuccess(
       context: context,
       title: '¡Producto Agregado!',
       message: '$codigo x $cantidad unidades',
@@ -290,7 +380,7 @@ class _ScanningScreenState extends State<ScanningScreen> {
 
   void _handleLoad() async {
     print('🚨🚨🚨 _handleLoad fue llamado 🚨🚨🚨');
-    
+
     final String codigo = _codigoController.text.trim();
     final int? cantidad = int.tryParse(_cantidadController.text.trim());
 
@@ -301,7 +391,7 @@ class _ScanningScreenState extends State<ScanningScreen> {
     print('================================');
 
     if (codigo.isEmpty) {
-      SweetAlertDialog.showError(
+      ResponseDialog.showWarning(
         context: context,
         title: 'Campo vacío',
         message: 'Por favor, ingrese un código',
@@ -311,7 +401,7 @@ class _ScanningScreenState extends State<ScanningScreen> {
     }
 
     if (cantidad == null || cantidad <= 0) {
-      SweetAlertDialog.showError(
+      ResponseDialog.showWarning(
         context: context,
         title: 'Cantidad inválida',
         message: 'Por favor, ingrese una cantidad válida mayor a 0',
@@ -333,7 +423,9 @@ class _ScanningScreenState extends State<ScanningScreen> {
     }
 
     if (cantidadEsperada == null) {
-      print('⚠️ Código no encontrado localmente, se enviará a la API para validación');
+      print(
+        '⚠️ Código no encontrado localmente, se enviará a la API para validación',
+      );
     } else {
       print('✅ Cantidad correcta, enviando a API...');
     }
@@ -348,7 +440,7 @@ class _ScanningScreenState extends State<ScanningScreen> {
       documento: widget.noteId,
       tienda: widget.tienda.nombre,
       force: 'no',
-      usuario: widget.usuario,  // ← AGREGAR
+      usuario: widget.usuario,
     );
 
     setState(() {
@@ -368,18 +460,18 @@ class _ScanningScreenState extends State<ScanningScreen> {
           cantidadEscaneada: cantidad,
           cantidadEsperada: response.cantidadCorrecta!,
         );
-      } else if (response.message != null && 
-                 (response.message!.contains('contado en su totalidad') ||
-                  response.message!.contains('ya fue contado'))) {
+      } else if (response.message != null &&
+          (response.message!.contains('contado en su totalidad') ||
+              response.message!.contains('ya fue contado'))) {
         _mostrarModalCantidadIncorrecta(
           codigo: codigo,
           cantidadEscaneada: cantidad,
           cantidadEsperada: 0,
         );
       } else {
-        SweetAlertDialog.showError(
+        ResponseDialog.showError(
           context: context,
-          title: 'Error al escanear',
+          title: 'Error del servidor',
           message: response.message ?? 'Ocurrió un error inesperado',
           buttonText: 'Entendido',
         );
@@ -413,7 +505,7 @@ class _ScanningScreenState extends State<ScanningScreen> {
   void _handleClear() async {
     if (_productos.isEmpty) return;
 
-    final confirmado = await SweetAlertDialog.showConfirm(
+    final confirmado = await ResponseDialog.showConfirm(
       context: context,
       title: 'Limpiar todo',
       message: '¿Está seguro de limpiar todos los productos escaneados?',
@@ -655,7 +747,9 @@ class _ScanningScreenState extends State<ScanningScreen> {
                                 itemCount: _productos.length,
                                 itemBuilder: (context, index) {
                                   final producto = _productos[index];
-                                  final bool validado = _productosValidados[producto.codigo] ?? false;
+                                  final bool validado =
+                                      _productosValidados[producto.codigo] ??
+                                      false;
                                   return Container(
                                     padding: const EdgeInsets.symmetric(
                                       horizontal: 12,
@@ -693,15 +787,7 @@ class _ScanningScreenState extends State<ScanningScreen> {
                                         SizedBox(
                                           width: 50,
                                           child: validado
-                                              ? IconButton(
-                                                  onPressed: () => _handleRemove(producto.codigo),
-                                                  icon: Icon(
-                                                    Icons.delete_outline,
-                                                    size: 18,
-                                                    color: AppColors.rojo,
-                                                  ),
-                                                  padding: EdgeInsets.zero,
-                                                )
+                                              ? const SizedBox.shrink() // ✅ No mostrar nada si está validado
                                               : const Icon(
                                                   Icons.cancel,
                                                   size: 18,
@@ -718,46 +804,25 @@ class _ScanningScreenState extends State<ScanningScreen> {
                   ),
                 ),
               ),
-              Container(
-                padding: const EdgeInsets.all(12),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: ElevatedButton(
-                        onPressed: _productos.isNotEmpty ? _handleClear : null,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppColors.rojo,
-                          disabledBackgroundColor: Colors.grey.shade300,
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                        ),
-                        child: const Text(
-                          'Limpiar',
-                          style: TextStyle(color: Colors.white),
-                        ),
+              SafeArea(
+                child: Container(
+                  padding: const EdgeInsets.all(12),
+                  child: ElevatedButton(
+                    onPressed: _productos.isNotEmpty ? _handleSave : null,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.azul,
+                      disabledBackgroundColor: Colors.grey.shade300,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
                       ),
+                      minimumSize: const Size(double.infinity, 0),
                     ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: ElevatedButton(
-                        onPressed: _productos.isNotEmpty ? _handleSave : null,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppColors.azul,
-                          disabledBackgroundColor: Colors.grey.shade300,
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                        ),
-                        child: const Text(
-                          'Guardar',
-                          style: TextStyle(color: Colors.white),
-                        ),
-                      ),
+                    child: const Text(
+                      'Guardar',
+                      style: TextStyle(color: Colors.white),
                     ),
-                  ],
+                  ),
                 ),
               ),
             ],

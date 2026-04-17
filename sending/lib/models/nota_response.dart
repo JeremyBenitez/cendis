@@ -23,19 +23,44 @@ class NotaResponse {
     print('📦 Procesando respuesta JSON: ${jsonEncode(json)}');
     print('📦 Tipo de respuesta: ${json.runtimeType}');
 
-    // Caso IMPORTADORA: Lista con [mensaje, listaDeProductos]
+    // ✅ CASO 1: Respuesta exitosa con solo "Response" (ej: "Cantidad actualizada correctamente")
+    if (json is Map && json.containsKey('Response') && json.length == 1) {
+      return NotaResponse(
+        success: true,
+        message: json['Response'].toString(),
+      );
+    }
+
+    // Caso 2: Lista con dos elementos [mapaConDatos, codigoHttp] (nota duplicada)
+    if (json is List && json.length >= 2 && json[0] is Map) {
+      final innerMap = Map<String, dynamic>.from(json[0]);
+      if (innerMap.containsKey('Response') && innerMap.containsKey('cantidades_cargadas')) {
+        final errorMsg = innerMap['Response'].toString();
+        final cantidadesCargadas = innerMap['cantidades_cargadas'] as List;
+        final precargados = cantidadesCargadas
+            .map((e) => ProductoEscaneadoPrecargado(
+                  codigo: (e as Map)['codigo']?.toString() ?? '',
+                  cantidad: (e as Map)['cantidad'] ?? 0,
+                ))
+            .toList();
+        return NotaResponse(
+          success: false,
+          message: errorMsg,
+          productosPrecargados: precargados,
+        );
+      }
+    }
+
+    // Caso 3: Lista con [mensaje, listaDeProductos] (importadora exitosa)
     if (json is List && json.length == 2) {
       final primerElemento = json[0];
       final segundoElemento = json[1];
-      
       if (primerElemento is String && segundoElemento is List) {
         final mensaje = primerElemento;
         final listaProductos = segundoElemento;
-        
         final productos = listaProductos
             .map((item) => ProductoData.fromJson(Map<String, dynamic>.from(item)))
             .toList();
-        
         return NotaResponse(
           success: true,
           message: mensaje,
@@ -45,7 +70,7 @@ class NotaResponse {
       }
     }
 
-    // Caso: Lista de productos (sin mensaje)
+    // Caso 4: Lista general de productos (sin mensaje)
     if (json is List) {
       final List<ProductoData> productos = [];
       for (var item in json) {
@@ -69,7 +94,7 @@ class NotaResponse {
       );
     }
 
-    // Caso: Mapa (para tiendas normales o errores)
+    // Caso 5: Mapa con error (para tiendas normales)
     if (json is Map) {
       final map = Map<String, dynamic>.from(json);
 

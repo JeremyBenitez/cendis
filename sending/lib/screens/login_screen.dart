@@ -22,7 +22,10 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _isLoading = false;
 
   void _handleLogin() async {
+
+
     if (_usuarioController.text.isEmpty) {
+
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Por favor, ingresa tu usuario'),
@@ -245,7 +248,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       const SizedBox(height: 16),
                       // Título
                       const Text(
-                        'Sending',
+                        'Cendins',
                         style: TextStyle(
                           fontSize: 32,
                           fontWeight: FontWeight.bold,

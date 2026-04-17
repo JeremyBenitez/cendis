@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:sending/class/LocalStorage.dart';
 import '../utils/app_colors.dart';
 import '../models/tienda.dart';
 import 'scanning_screen.dart';
@@ -143,6 +144,8 @@ class _OrdersListScreenState extends State<OrdersListScreen> {
 
   void _handleLogout() async {
     await _authService.logout();
+    await LocalStorage.remove('usuario');
+
     if (mounted) {
       Navigator.pushAndRemoveUntil(
         context,
@@ -181,7 +184,7 @@ class _OrdersListScreenState extends State<OrdersListScreen> {
           builder: (_) => ScanningScreen(
             noteId: noteId,
             tienda: widget.tienda,
-            usuario: widget.usuario,  // ← Agregar esta línea
+            usuario: widget.usuario,
             productosNota: response.productos,
           ),
         ),
@@ -189,10 +192,13 @@ class _OrdersListScreenState extends State<OrdersListScreen> {
     }
     // Caso 2: Nota duplicada con productos precargados
     else if (response.productosPrecargadosList.isNotEmpty && mounted) {
-      print('⚠️ Nota duplicada - Productos precargados: ${response.productosPrecargadosList.length}');
+      print(
+        '⚠️ Nota duplicada - Productos precargados: ${response.productosPrecargadosList.length}',
+      );
 
-      final productosPrecargados = response.productosPrecargadosList.map((p) =>
-          ProductoEscaneado(codigo: p.codigo, cantidad: p.cantidad)).toList();
+      final productosPrecargados = response.productosPrecargadosList
+          .map((p) => ProductoEscaneado(codigo: p.codigo, cantidad: p.cantidad))
+          .toList();
 
       Navigator.push(
         context,
@@ -200,7 +206,7 @@ class _OrdersListScreenState extends State<OrdersListScreen> {
           builder: (_) => ScanningScreen(
             noteId: noteId,
             tienda: widget.tienda,
-            usuario: widget.usuario,  // ← Agregar esta línea
+            usuario: widget.usuario,
             productosNota: response.productos,
             productosPrecargados: productosPrecargados,
           ),
@@ -610,13 +616,13 @@ class _OrdersListScreenState extends State<OrdersListScreen> {
               ],
             ),
           ),
-          if (_isSyncing)
+          /*if (_isSyncing)
             Container(
               color: Colors.black.withOpacity(0.5),
               child: const Center(
                 child: CircularProgressIndicator(color: Colors.white),
               ),
-            ),
+            ),*/
         ],
       ),
     );

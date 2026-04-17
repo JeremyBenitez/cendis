@@ -1,7 +1,4 @@
 class ApiConfig {
-  // ============================================
-  // CAMBIA AQUÍ LA URL BASE CUANDO SEA NECESARIO
-  // ============================================
   static const String baseUrl = 'http://10.100.39.17:5041/api/v1';
   
   // Endpoints de Autenticación
@@ -13,6 +10,7 @@ class ApiConfig {
   // Endpoints de Pedidos
   static const String notasVar = '/notas/var';
   static const String yaguara = '/yaguara';
+  static const String depositos = '/yaguara/depositos';  // ← Agregar esta línea
   
   // Endpoints de Escaneo
   static const String procesarNotas = '/notas/procesar_notas_yaguara';
@@ -39,7 +37,6 @@ class ApiConfig {
     }
   }
   
-  // ✅ AGREGAR ESTE MÉTODO
   static String getEscaneoEndpoint(String nombreTienda) {
     final storeNameUpper = nombreTienda.toUpperCase();
     
