@@ -59,9 +59,6 @@ class _LoginScreenState extends State<LoginScreen> {
     );
     
     final response = await _authService.login(request);
-
-    print("login response:");
-    print(response);
     
     setState(() {
       _isLoading = false;

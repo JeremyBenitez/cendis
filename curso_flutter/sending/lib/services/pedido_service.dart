@@ -7,6 +7,7 @@ class PedidoService {
   
   Future<PedidosResponse> getPedidos(String nombreTienda, {String? deposito}) async {
     try {
+      
       final endpoint = ApiConfig.getPedidosEndpoint(nombreTienda, deposito: deposito);
       print('📦 Endpoint calculado: $endpoint');
       

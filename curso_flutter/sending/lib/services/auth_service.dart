@@ -1,3 +1,5 @@
+import 'package:sending/class/LocalStorage.dart';
+
 import 'api_client.dart';
 import '../models/login_request.dart';
 import '../models/login_response.dart';
@@ -13,10 +15,10 @@ class AuthService {
 
       final response = await _apiClient.post(ApiConfig.auth, request.toJson());
 
-      print("response: $response");
+      print(response);
       
-      if (response['token'] != null) {
-        await _apiClient.setAuthToken(response['token']);
+      if (response['Success']) {
+       LocalStorage.setJson("usuario", response['Usuario_Iniciado']);
       }
       
       return LoginResponse(
