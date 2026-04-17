@@ -186,6 +186,7 @@ class _OrdersListScreenState extends State<OrdersListScreen> {
           builder: (_) => ScanningScreen(
             noteId: noteId,
             tienda: widget.tienda,
+            usuario: widget.usuario,
             productosNota: response.productos,
           ),
         ),
@@ -204,6 +205,7 @@ class _OrdersListScreenState extends State<OrdersListScreen> {
           builder: (_) => ScanningScreen(
             noteId: noteId,
             tienda: widget.tienda,
+            usuario: widget.usuario,
             productosNota: response.productos,
             productosPrecargados: productosPrecargados,
           ),
