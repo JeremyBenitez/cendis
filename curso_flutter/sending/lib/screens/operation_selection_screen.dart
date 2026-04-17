@@ -3,7 +3,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:sending/class/LocalStorage.dart';
-import 'package:sending/class/RespuestaApiHelper.dart';
 import 'package:sending/services/depositos_service.dart';
 import '../utils/app_colors.dart';
 import '../models/tienda.dart';
@@ -50,7 +49,7 @@ class _OperationSelectionScreenState extends State<OperationSelectionScreen> {
   void _handleContinue() {
 
     if (_selectedOperation != null) {
-      Navigator.pushReplacement(
+      Navigator.push(
         context,
         MaterialPageRoute(
           builder: (_) => OrdersListScreen(
@@ -65,106 +64,115 @@ class _OperationSelectionScreenState extends State<OperationSelectionScreen> {
 
   //mostrar modal
   mostrarModal(BuildContext context) {
-
     showDialog(
       context: context,
       builder: (BuildContext context) {
-        return AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(15),
-          ),
-          title: const Text(
-            'Depósito de origen',
-            textAlign: TextAlign.center,
-          ),
-          content: Column(
-           
-            mainAxisSize: MainAxisSize.min,// Esto hace que el contenido se ajuste al tamaño necesario 
-            children: [
-              Text.rich(
-                TextSpan(
-                  text: 'Seleccione el depósito en el cual se recibirán las notas para ',
-                  style: const TextStyle(color: Colors.black), // Estilo general
-                  children: [
+
+        // Variable local para el depósito seleccionado dentro del diálogo
+        Map<String, dynamic>? depositoLocal = depositoSeleccionado;
+        
+        return StatefulBuilder(
+          builder: (BuildContext context, StateSetter setDialogState) {
+            return AlertDialog(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(15),
+              ),
+              title: const Text(
+                'Depósito de origen',
+                textAlign: TextAlign.center,
+              ),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text.rich(
                     TextSpan(
-                      text: widget.tienda.nombre,
-                      style: const TextStyle(
-                        fontWeight: FontWeight.bold, // Negrita
-                        color: AppColors.azul,       // Tu color personalizado
-                        fontSize: 16,                // Un poco más grande si quieres
-                      ),
+                      text: 'Seleccione el depósito en el cual se recibirán las notas para ',
+                      style: const TextStyle(color: Colors.black),
+                      children: [
+                        TextSpan(
+                          text: widget.tienda.nombre,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            color: AppColors.azul,
+                            fontSize: 16,
+                          ),
+                        ),
+                        const TextSpan(
+                          text: '.',
+                        ),
+                      ],
                     ),
-                    const TextSpan(
-                      text: '.',
-                    ),
-                  ],
-                ),
-                textAlign: TextAlign.justify,
-              ),
-              const SizedBox(height: 20), // Espacio entre el texto y el select
-              
-              DropdownButtonFormField<Map<String, dynamic>>( // Cambiado a Map
-                isExpanded: true,
-                decoration: InputDecoration(
-                  labelText: 'Seleccionar Depósito',
-                  labelStyle: const TextStyle(fontSize: 14),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10),
+                    textAlign: TextAlign.justify,
                   ),
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                ),
-                value: depositoSeleccionado,
-                hint: const Text('Seleccione un depósito'), // Texto cuando no hay selección
-                items: listaDepositos.map((deposito) {
-                  return DropdownMenuItem<Map<String, dynamic>>(
-                    value: deposito, // El valor es el objeto completo
-                    child: Text(
-                      deposito['nombre'], // Mostramos el nombre
-                      style: const TextStyle(fontSize: 14),
+                  const SizedBox(height: 20),
+                  
+                  DropdownButtonFormField<Map<String, dynamic>>(
+                    isExpanded: true,
+                    decoration: InputDecoration(
+                      labelText: 'Seleccionar Depósito',
+                      labelStyle: const TextStyle(fontSize: 14),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                     ),
-                  );
-                }).toList(),
-                onChanged: (nuevoDeposito) async{
-
-                  setState(() {
-                    depositoSeleccionado = nuevoDeposito; // Guardamos el objeto completo
-                  });
-
-                  await LocalStorage.setJson('deposito', nuevoDeposito!);
-
-                  _handleContinue();
-
-
-                },
+                    value: depositoLocal,
+                    hint: const Text('Seleccione un depósito'),
+                    items: listaDepositos.map((deposito) {
+                      return DropdownMenuItem<Map<String, dynamic>>(
+                        value: deposito,
+                        child: Text(
+                          deposito['nombre'],
+                          style: const TextStyle(fontSize: 14),
+                        ),
+                      );
+                    }).toList(),
+                    onChanged: (nuevoDeposito) async {
+                      
+                      // Actualizar el estado local del diálogo
+                      setDialogState(() {
+                        depositoLocal = nuevoDeposito;
+                      });
+                      
+                      // También actualizar el estado del widget padre si es necesario
+                      setState(() {
+                        depositoSeleccionado = nuevoDeposito;
+                      });
+                      
+                      await LocalStorage.setJson('deposito', nuevoDeposito!);
+                    },
+                  ),
+                ],
               ),
-            ],
-          ),
-          actions: [
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.rojo,
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10),
+              actions: [
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.rojo,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Cancelar'),
                 ),
-              ),
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancelar'),
-            ),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.azul,
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.azul,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
+                  onPressed: depositoLocal == null ? null : () {
+                    Navigator.pop(context);
+                    _handleContinue();
+                  },
+                  child: const Text('Continuar'),
                 ),
-              ),
-              onPressed: () {
-                Navigator.pop(context);
-              },
-              child: const Text('Continuar'),
-            ),
-          ],
+              ],
+            );
+          },
         );
       },
     );
@@ -180,9 +188,22 @@ class _OperationSelectionScreenState extends State<OperationSelectionScreen> {
       
       if(response['status']) {
 
-        setState(() {
-          listaDepositos = response['data'];
-        });
+        if(response["data"].isNotEmpty) {
+
+          setState(() {
+            listaDepositos = response['data'];
+          });
+
+        }
+        else{
+
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(response['mensaje'] ?? 'No se encontraron depósitos.'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
 
         return;
 
@@ -199,18 +220,14 @@ class _OperationSelectionScreenState extends State<OperationSelectionScreen> {
 
       }
 
-
     }
     catch(e){
 
       print(e);
       
     }
-
     
   }
-
-
 
   @override
   void initState() {
@@ -221,8 +238,6 @@ class _OperationSelectionScreenState extends State<OperationSelectionScreen> {
 
   @override
   Widget build(BuildContext context) {
-
-    print(widget.tienda.nombre);
 
     return Scaffold(
       body: Container(
@@ -331,9 +346,15 @@ class _OperationSelectionScreenState extends State<OperationSelectionScreen> {
                   child: ListView.builder(
                     itemCount: widget.tienda.nombre == "IMPORTADORA" ? _operations.length : _operations.length - 1,
                     itemBuilder: (context, index) {
+
                       final operation = _operations[index];
                       final isSelected = _selectedOperation == operation['id'];
-                      return AnimatedContainer(
+                      
+                      return widget.tienda.nombre == "IMPORTADORA" && operation['id'] == 'recepcion' 
+                      ? 
+                      Container()
+                      :
+                      AnimatedContainer(
                         duration: const Duration(milliseconds: 200),
                         margin: const EdgeInsets.only(bottom: 16),
                         child: GestureDetector(
@@ -457,7 +478,7 @@ class _OperationSelectionScreenState extends State<OperationSelectionScreen> {
                 ),
               ),
               // Botón continuar
-              Padding(
+              /*Padding(
                 padding: const EdgeInsets.all(24),
                 child: SizedBox(
                   width: double.infinity,
@@ -497,7 +518,7 @@ class _OperationSelectionScreenState extends State<OperationSelectionScreen> {
                     ),
                   ),
                 ),
-              ),
+              ),*/
             ],
           ),
         ),

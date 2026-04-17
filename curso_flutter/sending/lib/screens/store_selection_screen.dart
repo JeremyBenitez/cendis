@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:sending/class/LocalStorage.dart';
+import 'package:sending/screens/operation_selection_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../utils/app_colors.dart';
 import '../models/tienda.dart';
@@ -13,8 +15,8 @@ class StoreSelectionScreen extends StatefulWidget {
   State<StoreSelectionScreen> createState() => _StoreSelectionScreenState();
 }
 
-class _StoreSelectionScreenState extends State<StoreSelectionScreen>
-    with SingleTickerProviderStateMixin {
+class _StoreSelectionScreenState extends State<StoreSelectionScreen> with SingleTickerProviderStateMixin {
+
   final TiendaService _tiendaService = TiendaService();
   List<Tienda> tiendas = [];  // ← Tipo List<Tienda>
   String _searchTerm = '';
@@ -31,15 +33,46 @@ class _StoreSelectionScreenState extends State<StoreSelectionScreen>
         .toList();
   }
 
+
+  Future<void> comprobarSesion()async{
+
+    await _cargarTiendas();
+
+    if(await LocalStorage.getJson('usuario') != null){
+
+      Map<String, dynamic>? usuario = await LocalStorage.getJson('usuario');
+
+      for (var tienda in tiendas) {
+
+        if (tienda.localidad == usuario!['localidad']) {
+
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+              builder: (_) => OperationSelectionScreen(usuario: usuario["Usuario"], tienda: Tienda(id: tienda.id, nombre: tienda.nombre, localidad: tienda.localidad)),
+            ),
+          );
+          
+          break;
+        }
+      }
+
+    }
+    
+  }
+
+
   @override
   void initState() {
     super.initState();
+
     _animationController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 500),
     );
     _animationController.forward();
-    _cargarTiendas();
+    comprobarSesion();
+    //_cargarTiendas();
   }
 
   @override

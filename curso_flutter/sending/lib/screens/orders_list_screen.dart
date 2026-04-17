@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:sending/class/LocalStorage.dart';
 import '../utils/app_colors.dart';
 import '../models/tienda.dart';
 import 'scanning_screen.dart';
@@ -27,6 +28,7 @@ class OrdersListScreen extends StatefulWidget {
 }
 
 class _OrdersListScreenState extends State<OrdersListScreen> {
+
   final PedidoService _pedidoService = PedidoService();
   final AuthService _authService = AuthService();
   final EscaneoService _escaneoService = EscaneoService();
@@ -142,7 +144,10 @@ class _OrdersListScreenState extends State<OrdersListScreen> {
   }
 
   void _handleLogout() async {
+
     await _authService.logout();
+    await LocalStorage.remove('usuario');
+    
     if (mounted) {
       Navigator.pushAndRemoveUntil(
         context,

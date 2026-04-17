@@ -57,6 +57,6 @@ class TiendaData {
   
   // Convertir a tu modelo Tienda existente
   Tienda toTienda() {
-    return Tienda(id: id, nombre: nombre);
+    return Tienda(id: id, nombre: nombre, localidad: localidad);
   }
 }
