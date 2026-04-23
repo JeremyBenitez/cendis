@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:sending/class/LocalStorage.dart';
 import '../utils/app_colors.dart';
 import '../models/tienda.dart';
-import 'scanning_screen.dart';
+import 'scanning/scanning_screen.dart';
 import 'store_selection_screen.dart';
 import '../services/pedido_service.dart';
 import '../services/auth_service.dart';
@@ -10,6 +10,7 @@ import '../services/escaneo_service.dart';
 import '../models/pedido_response.dart';
 import '../models/producto_escaneado.dart';
 import '../widgets/sweet_alert_dialog.dart';
+import '../widgets/error_connection_widget.dart';
 
 class OrdersListScreen extends StatefulWidget {
   final String usuario;
@@ -113,27 +114,31 @@ class _OrdersListScreenState extends State<OrdersListScreen> {
 
     print('🔍 Cargando pedidos para tienda: ${widget.tienda.nombre}');
 
-    final response = await _pedidoService.getPedidos(widget.tienda.nombre);
+    try {
+      final response = await _pedidoService.getPedidos(widget.tienda.nombre);
 
-    print('📊 Respuesta success: ${response.success}');
-    print('📊 Pedidos recibidos: ${response.pedidos.length}');
-
-    setState(() {
-      _isLoading = false;
-      if (response.success) {
-        _pedidos = response.pedidos;
-        _currentPage = 1;
-        print('✅ Pedidos cargados exitosamente: ${_pedidos.length}');
-        if (_pedidos.isNotEmpty) {
-          print(
-            '📋 Primer pedido: ID=${_pedidos[0].id}, Fecha=${_pedidos[0].fecha}',
-          );
+      setState(() {
+        _isLoading = false;
+        if (response.success) {
+          _pedidos = response.pedidos;
+          _currentPage = 1;
+          print('✅ Pedidos cargados exitosamente: ${_pedidos.length}');
+          if (_pedidos.isNotEmpty) {
+            print(
+              '📋 Primer pedido: ID=${_pedidos[0].id}, Fecha=${_pedidos[0].fecha}',
+            );
+          }
+        } else {
+          _errorMessage = response.message ?? 'Error al cargar pedidos';
+          print('❌ Error: $_errorMessage');
         }
-      } else {
-        _errorMessage = response.message ?? 'Error al cargar pedidos';
-        print('❌ Error: $_errorMessage');
-      }
-    });
+      });
+    } catch (e) {
+      setState(() {
+        _isLoading = false;
+        _errorMessage = 'Verifica tu conexión a internet.';
+      });
+    }
   }
 
   Future<void> _handleSync() async {
@@ -172,7 +177,10 @@ class _OrdersListScreenState extends State<OrdersListScreen> {
     setState(() {
       _isSyncing = false;
     });
-
+    print('🔍 productosNota tiene ${response.productos.length} productos');
+    print(
+      '🔍 primer producto: ${response.productos.isNotEmpty ? response.productos[0].codigo : "ninguno"}',
+    );
     // Caso 1: Éxito - nota nueva con productos
     if (response.success && mounted) {
       print('✅ Nota procesada exitosamente');
@@ -185,11 +193,14 @@ class _OrdersListScreenState extends State<OrdersListScreen> {
             noteId: noteId,
             tienda: widget.tienda,
             usuario: widget.usuario,
+            operacion: widget.operationType,
             productosNota: response.productos,
           ),
         ),
       );
     }
+    // Caso 2: Nota duplicada con productos precargados
+    // Caso 2: Nota duplicada con productos precargados
     // Caso 2: Nota duplicada con productos precargados
     else if (response.productosPrecargadosList.isNotEmpty && mounted) {
       print(
@@ -200,6 +211,15 @@ class _OrdersListScreenState extends State<OrdersListScreen> {
           .map((p) => ProductoEscaneado(codigo: p.codigo, cantidad: p.cantidad))
           .toList();
 
+      // ✅ Hacer una SEGUNDA llamada para obtener los productos esperados
+      // Usamos el mismo servicio pero con un flag diferente o simplemente otra llamada
+      final responseProductos = await _escaneoService.procesarNota(
+        filtro: noteId,
+        usuario: widget.usuario,
+        originDeposito: '',
+        tienda: widget.tienda.nombre,
+      );
+
       Navigator.push(
         context,
         MaterialPageRoute(
@@ -207,23 +227,42 @@ class _OrdersListScreenState extends State<OrdersListScreen> {
             noteId: noteId,
             tienda: widget.tienda,
             usuario: widget.usuario,
-            productosNota: response.productos,
+            operacion: widget.operationType,
+            productosNota:
+                responseProductos.productos, // ✅ Ahora sí tiene los productos
             productosPrecargados: productosPrecargados,
           ),
         ),
       );
     }
-    // Caso 3: Error
+    // Caso 3: Error / información
     else {
-      final errorMsg = response.message ?? 'Error al cargar la nota';
-      print('❌ Error: $errorMsg');
+      final errorMsg = response.message ?? 'No se encontraron productos';
+      print('ℹ️ Info: $errorMsg');
 
-      SweetAlertDialog.showError(
-        context: context,
-        title: 'Error',
-        message: errorMsg,
-        buttonText: 'Entendido',
-      );
+      final lowerMsg = errorMsg.toLowerCase();
+      final isServerError =
+          lowerMsg.contains('conexión') ||
+          lowerMsg.contains('servidor') ||
+          lowerMsg.contains('timeout') ||
+          lowerMsg.contains('service') ||
+          lowerMsg.contains('backend');
+
+      if (isServerError) {
+        SweetAlertDialog.showError(
+          context: context,
+          title: 'Error',
+          message: errorMsg,
+          buttonText: 'Entendido',
+        );
+      } else {
+        SweetAlertDialog.showInfo(
+          context: context,
+          title: 'Información',
+          message: errorMsg,
+          buttonText: 'Entendido',
+        );
+      }
     }
   }
 
@@ -361,32 +400,9 @@ class _OrdersListScreenState extends State<OrdersListScreen> {
                               ),
                             )
                           : _errorMessage != null
-                          ? Center(
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Icon(
-                                    Icons.error_outline,
-                                    size: 48,
-                                    color: AppColors.rojo,
-                                  ),
-                                  const SizedBox(height: 12),
-                                  Text(
-                                    _errorMessage!,
-                                    style: TextStyle(
-                                      color: Colors.grey.shade600,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 16),
-                                  ElevatedButton(
-                                    onPressed: _cargarPedidos,
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: AppColors.azul,
-                                    ),
-                                    child: const Text('Reintentar'),
-                                  ),
-                                ],
-                              ),
+                          ? ErrorConnectionWidget(
+                              onRetry: _cargarPedidos,
+                              message: _errorMessage,
                             )
                           : _pedidos.isEmpty
                           ? Center(

@@ -6,47 +6,59 @@ import '../models/login_response.dart';
 import '../config/api_config.dart';
 
 class AuthService {
-
   final ApiClient _apiClient = ApiClient();
-  
+
   Future<LoginResponse> login(LoginRequest request) async {
-
     try {
-
       final response = await _apiClient.post(ApiConfig.auth, request.toJson());
 
       print(response);
-      
+
       if (response['Success']) {
-       LocalStorage.setJson("usuario", response['Usuario_Iniciado']);
+        LocalStorage.setJson("usuario", response['Usuario_Iniciado']);
       }
-      
+
       return LoginResponse(
         rawData: response,
         isSuccess: true,
         message: 'Inicio de sesión exitoso',
       );
     } on ApiException catch (e) {
-
       // Primero intentar extraer el mensaje personalizado de la respuesta
       String mensajePersonalizado = '';
 
       if (e.errors != null && e.errors is Map) {
         mensajePersonalizado = e.errors['Mensaje'] ?? e.errors['message'] ?? '';
       }
-      
+
+      // Si es un error de conexión, devolver mensaje de internet
+      if (e.message.toLowerCase().contains('no se pudo conectar') ||
+          e.message.toLowerCase().contains('error de conexión') ||
+          e.statusCode == 0) {
+        return LoginResponse(
+          rawData: {'message': e.message, 'statusCode': e.statusCode},
+          isSuccess: false,
+          message:
+              'No se pudo conectar al servidor. Verifica tu conexión a internet.',
+        );
+      }
+
       // Si hay mensaje personalizado, usarlo
       if (mensajePersonalizado.isNotEmpty) {
+        final mensajeAmigable = _traducirMensajePersonalizado(
+          mensajePersonalizado,
+        );
 
-        final mensajeAmigable = _traducirMensajePersonalizado(mensajePersonalizado);
-        
         return LoginResponse(
-          rawData: {'message': mensajePersonalizado, 'statusCode': e.statusCode},
+          rawData: {
+            'message': mensajePersonalizado,
+            'statusCode': e.statusCode,
+          },
           isSuccess: false,
           message: mensajeAmigable,
         );
       }
-      
+
       // Si no, traducir por código HTTP
       final mensajeAmigable = _traducirError(e.message, e.statusCode);
       return LoginResponse(
@@ -58,34 +70,39 @@ class AuthService {
       return LoginResponse(
         rawData: {'message': e.toString()},
         isSuccess: false,
-        message: 'No se pudo conectar al servidor. Verifica tu conexión a internet.',
+        message:
+            'No se pudo conectar al servidor. Verifica tu conexión a internet.',
       );
     }
   }
-  
+
   String _traducirMensajePersonalizado(String mensaje) {
     final msgLower = mensaje.toLowerCase();
-    
-    if (msgLower.contains('usuario no encontrado') || msgLower.contains('user not found')) {
+
+    if (msgLower.contains('usuario no encontrado') ||
+        msgLower.contains('user not found')) {
       return '❌ Usuario no encontrado. Verifica tu nombre de usuario.';
     }
-    if (msgLower.contains('contraseña incorrecta') || msgLower.contains('invalid password')) {
+    if (msgLower.contains('contraseña incorrecta') ||
+        msgLower.contains('invalid password')) {
       return '❌ Contraseña incorrecta. Por favor, inténtalo de nuevo.';
     }
-    if (msgLower.contains('tienda no válida') || msgLower.contains('invalid store')) {
+    if (msgLower.contains('tienda no válida') ||
+        msgLower.contains('invalid store')) {
       return '❌ La tienda seleccionada no es válida. Contacta al administrador.';
     }
-    if (msgLower.contains('usuario inactivo') || msgLower.contains('user inactive')) {
+    if (msgLower.contains('usuario inactivo') ||
+        msgLower.contains('user inactive')) {
       return '❌ Tu usuario está inactivo. Contacta al administrador.';
     }
-    
+
     return '❌ Error: $mensaje';
   }
-  
+
   String _traducirError(String error, int statusCode) {
     // Primero, verificar si el error contiene mensajes específicos
     final errorLower = error.toLowerCase();
-    
+
     // Mensajes de error comunes en la respuesta
     if (errorLower.contains('usuario no encontrado')) {
       return '❌ Usuario no encontrado. Verifica tu nombre de usuario.';
@@ -93,7 +110,7 @@ class AuthService {
     if (errorLower.contains('contraseña incorrecta')) {
       return '❌ Contraseña incorrecta. Por favor, inténtalo de nuevo.';
     }
-    
+
     // Errores por código HTTP
     switch (statusCode) {
       case 400:
@@ -111,14 +128,14 @@ class AuthService {
       default:
         break;
     }
-    
+
     return '❌ Error al iniciar sesión. Intenta nuevamente.';
   }
-  
+
   Future<void> logout() async {
     await _apiClient.clearAuthToken();
   }
-  
+
   Future<bool> isLoggedIn() async {
     await _apiClient.loadAuthToken();
     return _apiClient.authToken != null;

@@ -7,6 +7,7 @@ import '../utils/app_colors.dart';
 import '../models/tienda.dart';
 import 'login_screen.dart';
 import '../services/tienda_service.dart';
+import '../widgets/error_connection_widget.dart';
 
 class StoreSelectionScreen extends StatefulWidget {
   const StoreSelectionScreen({super.key});
@@ -15,10 +16,10 @@ class StoreSelectionScreen extends StatefulWidget {
   State<StoreSelectionScreen> createState() => _StoreSelectionScreenState();
 }
 
-class _StoreSelectionScreenState extends State<StoreSelectionScreen> with SingleTickerProviderStateMixin {
-
+class _StoreSelectionScreenState extends State<StoreSelectionScreen>
+    with SingleTickerProviderStateMixin {
   final TiendaService _tiendaService = TiendaService();
-  List<Tienda> tiendas = [];  // ← Tipo List<Tienda>
+  List<Tienda> tiendas = [];
   String _searchTerm = '';
   Tienda? _selectedStore;
   late AnimationController _animationController;
@@ -28,51 +29,49 @@ class _StoreSelectionScreenState extends State<StoreSelectionScreen> with Single
   List<Tienda> get _filteredStores {
     if (_searchTerm.isEmpty) return tiendas;
     return tiendas
-        .where((store) =>
-            store.nombre.toLowerCase().contains(_searchTerm.toLowerCase()))
+        .where(
+          (store) =>
+              store.nombre.toLowerCase().contains(_searchTerm.toLowerCase()),
+        )
         .toList();
   }
 
-
-  Future<void> comprobarSesion()async{
-
+  Future<void> comprobarSesion() async {
     await _cargarTiendas();
 
-    if(await LocalStorage.getJson('usuario') != null){
-
+    if (await LocalStorage.getJson('usuario') != null) {
       Map<String, dynamic>? usuario = await LocalStorage.getJson('usuario');
 
       for (var tienda in tiendas) {
-
         if (tienda.localidad == usuario!['localidad']) {
-
           Navigator.pushReplacement(
             context,
             MaterialPageRoute(
-              builder: (_) => OperationSelectionScreen(usuario: usuario["Usuario"], tienda: Tienda(id: tienda.id, nombre: tienda.nombre, localidad: tienda.localidad)),
+              builder: (_) => OperationSelectionScreen(
+                usuario: usuario["Usuario"],
+                tienda: Tienda(
+                  id: tienda.id,
+                  nombre: tienda.nombre,
+                  localidad: tienda.localidad,
+                ),
+              ),
             ),
           );
-          
           break;
         }
       }
-
     }
-    
   }
-
 
   @override
   void initState() {
     super.initState();
-
     _animationController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 500),
     );
     _animationController.forward();
     comprobarSesion();
-    //_cargarTiendas();
   }
 
   @override
@@ -86,18 +85,32 @@ class _StoreSelectionScreenState extends State<StoreSelectionScreen> with Single
       _isLoading = true;
       _errorMessage = null;
     });
-    
-    final response = await _tiendaService.getTiendas();
-    
-    setState(() {
-      _isLoading = false;
-      if (response.success) {
-        // ✅ Convertir TiendaData a Tienda
-        tiendas = response.tiendas.map((t) => t.toTienda()).toList();
-      } else {
-        _errorMessage = response.message ?? 'Error al cargar tiendas';
-      }
-    });
+
+    try {
+      final response = await _tiendaService.getTiendas();
+
+      setState(() {
+        _isLoading = false;
+        if (response.success) {
+          tiendas = response.tiendas.map((t) => t.toTienda()).toList();
+        } else {
+          // Si el mensaje del servicio contiene texto técnico, lo reemplazamos
+          final msg = response.message ?? 'Error al cargar tiendas';
+          if (msg.contains('Connection') ||
+              msg.contains('connection') ||
+              msg.contains('failed')) {
+            _errorMessage = 'Verifica tu conexión a internet.';
+          } else {
+            _errorMessage = msg;
+          }
+        }
+      });
+    } catch (e) {
+      setState(() {
+        _isLoading = false;
+        _errorMessage = 'Verifica tu conexión a internet.'; // ✅ Forzado
+      });
+    }
   }
 
   Future<void> _handleContinue() async {
@@ -124,9 +137,7 @@ class _StoreSelectionScreenState extends State<StoreSelectionScreen> with Single
       ),
       child: Scaffold(
         body: Container(
-          decoration: BoxDecoration(
-            gradient: AppColors.gradienteFondo,
-          ),
+          decoration: BoxDecoration(gradient: AppColors.gradienteFondo),
           child: Stack(
             children: [
               // Burbujas decorativas
@@ -178,7 +189,7 @@ class _StoreSelectionScreenState extends State<StoreSelectionScreen> with Single
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           const Text(
-                            'Cendins',
+                            'Cendis',
                             style: TextStyle(
                               fontSize: 42,
                               fontWeight: FontWeight.bold,
@@ -188,7 +199,7 @@ class _StoreSelectionScreenState extends State<StoreSelectionScreen> with Single
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            'App de gestión logística avanzada',
+                            'Centro de distribucion',
                             style: TextStyle(
                               fontSize: 14,
                               color: Colors.white.withOpacity(0.85),
@@ -199,7 +210,10 @@ class _StoreSelectionScreenState extends State<StoreSelectionScreen> with Single
                     ),
                     // Buscador
                     Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 24,
+                        vertical: 8,
+                      ),
                       child: Container(
                         decoration: BoxDecoration(
                           color: Colors.white,
@@ -221,12 +235,17 @@ class _StoreSelectionScreenState extends State<StoreSelectionScreen> with Single
                           decoration: InputDecoration(
                             hintText: 'Buscar tienda...',
                             hintStyle: TextStyle(color: Colors.grey.shade400),
-                            prefixIcon: Icon(Icons.search, color: AppColors.azul),
+                            prefixIcon: Icon(
+                              Icons.search,
+                              color: AppColors.azul,
+                            ),
                             border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(12),
                               borderSide: BorderSide.none,
                             ),
-                            contentPadding: const EdgeInsets.symmetric(vertical: 14),
+                            contentPadding: const EdgeInsets.symmetric(
+                              vertical: 14,
+                            ),
                           ),
                         ),
                       ),
@@ -260,141 +279,126 @@ class _StoreSelectionScreenState extends State<StoreSelectionScreen> with Single
                                     ),
                                   )
                                 : _errorMessage != null
-                                    ? Center(
-                                        child: Column(
-                                          mainAxisAlignment: MainAxisAlignment.center,
-                                          children: [
-                                            Icon(
-                                              Icons.error_outline,
-                                              size: 48,
-                                              color: AppColors.rojo,
-                                            ),
-                                            const SizedBox(height: 12),
-                                            Text(
-                                              _errorMessage!,
-                                              style: TextStyle(
-                                                fontSize: 14,
-                                                color: Colors.grey.shade600,
-                                              ),
-                                              textAlign: TextAlign.center,
-                                            ),
-                                            const SizedBox(height: 16),
-                                            ElevatedButton(
-                                              onPressed: _cargarTiendas,
-                                              style: ElevatedButton.styleFrom(
-                                                backgroundColor: AppColors.azul,
-                                                shape: RoundedRectangleBorder(
-                                                  borderRadius: BorderRadius.circular(8),
-                                                ),
-                                              ),
-                                              child: const Text('Reintentar'),
-                                            ),
-                                          ],
+                                ? ErrorConnectionWidget(
+                                    onRetry: _cargarTiendas,
+                                    message: _errorMessage,
+                                  )
+                                : _filteredStores.isEmpty
+                                ? Center(
+                                    child: Column(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
+                                      children: [
+                                        Icon(
+                                          Icons.store_outlined,
+                                          size: 48,
+                                          color: Colors.grey.shade400,
                                         ),
-                                      )
-                                    : _filteredStores.isEmpty
-                                        ? Center(
-                                            child: Column(
-                                              mainAxisAlignment: MainAxisAlignment.center,
-                                              children: [
-                                                Icon(
-                                                  Icons.store_outlined,
-                                                  size: 48,
-                                                  color: Colors.grey.shade400,
-                                                ),
-                                                const SizedBox(height: 12),
-                                                Text(
-                                                  'No se encontraron tiendas',
-                                                  style: TextStyle(
-                                                    fontSize: 14,
-                                                    color: Colors.grey.shade500,
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                          )
-                                        : ListView.builder(
-                                            itemCount: _filteredStores.length,
-                                            itemBuilder: (context, index) {
-                                              final store = _filteredStores[index];
-                                              final isSelected = _selectedStore?.id == store.id;
-                                              return AnimatedContainer(
-                                                duration: const Duration(milliseconds: 200),
-                                                margin: const EdgeInsets.symmetric(
-                                                  horizontal: 12,
-                                                  vertical: 6,
-                                                ),
-                                                decoration: BoxDecoration(
-                                                  borderRadius: BorderRadius.circular(12),
-                                                  color: isSelected
-                                                      ? AppColors.azul
-                                                      : Colors.transparent,
-                                                  border: Border.all(
-                                                    color: isSelected
-                                                        ? Colors.transparent
-                                                        : Colors.grey.shade200,
-                                                    width: 1.5,
-                                                  ),
-                                                ),
-                                                child: ListTile(
-                                                  leading: Container(
-                                                    width: 40,
-                                                    height: 40,
-                                                    decoration: BoxDecoration(
-                                                      color: isSelected
-                                                          ? Colors.white.withOpacity(0.2)
-                                                          : AppColors.azul.withOpacity(0.1),
-                                                      borderRadius: BorderRadius.circular(10),
-                                                    ),
-                                                    child: Icon(
-                                                      Icons.store,
-                                                      size: 20,
-                                                      color: isSelected
-                                                          ? Colors.white
-                                                          : AppColors.azul,
-                                                    ),
-                                                  ),
-                                                  title: Text(
-                                                    store.nombre,
-                                                    style: TextStyle(
-                                                      fontSize: 14,
-                                                      fontWeight: isSelected
-                                                          ? FontWeight.w600
-                                                          : FontWeight.normal,
-                                                      color: isSelected
-                                                          ? Colors.white
-                                                          : Colors.grey.shade800,
-                                                    ),
-                                                  ),
-                                                  trailing: isSelected
-                                                      ? Container(
-                                                          width: 24,
-                                                          height: 24,
-                                                          decoration: BoxDecoration(
-                                                            color: Colors.white,
-                                                            shape: BoxShape.circle,
-                                                          ),
-                                                          child: const Icon(
-                                                            Icons.check,
-                                                            size: 16,
-                                                            color: AppColors.azul,
-                                                          ),
-                                                        )
-                                                      : null,
-                                                  onTap: () {
-                                                    setState(() {
-                                                      _selectedStore = store;
-                                                    });
-                                                    HapticFeedback.lightImpact();
-                                                  },
-                                                  shape: RoundedRectangleBorder(
-                                                    borderRadius: BorderRadius.circular(12),
-                                                  ),
-                                                  dense: false,
-                                                ),
-                                              );
-                                            },
+                                        const SizedBox(height: 12),
+                                        Text(
+                                          'No se encontraron tiendas',
+                                          style: TextStyle(
+                                            fontSize: 14,
+                                            color: Colors.grey.shade500,
                                           ),
+                                        ),
+                                      ],
+                                    ),
+                                  )
+                                : ListView.builder(
+                                    itemCount: _filteredStores.length,
+                                    itemBuilder: (context, index) {
+                                      final store = _filteredStores[index];
+                                      final isSelected =
+                                          _selectedStore?.id == store.id;
+                                      return AnimatedContainer(
+                                        duration: const Duration(
+                                          milliseconds: 200,
+                                        ),
+                                        margin: const EdgeInsets.symmetric(
+                                          horizontal: 12,
+                                          vertical: 6,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          borderRadius: BorderRadius.circular(
+                                            12,
+                                          ),
+                                          color: isSelected
+                                              ? AppColors.azul
+                                              : Colors.transparent,
+                                          border: Border.all(
+                                            color: isSelected
+                                                ? Colors.transparent
+                                                : Colors.grey.shade200,
+                                            width: 1.5,
+                                          ),
+                                        ),
+                                        child: ListTile(
+                                          leading: Container(
+                                            width: 40,
+                                            height: 40,
+                                            decoration: BoxDecoration(
+                                              color: isSelected
+                                                  ? Colors.white.withOpacity(
+                                                      0.2,
+                                                    )
+                                                  : AppColors.azul.withOpacity(
+                                                      0.1,
+                                                    ),
+                                              borderRadius:
+                                                  BorderRadius.circular(10),
+                                            ),
+                                            child: Icon(
+                                              Icons.store,
+                                              size: 20,
+                                              color: isSelected
+                                                  ? Colors.white
+                                                  : AppColors.azul,
+                                            ),
+                                          ),
+                                          title: Text(
+                                            store.nombre,
+                                            style: TextStyle(
+                                              fontSize: 14,
+                                              fontWeight: isSelected
+                                                  ? FontWeight.w600
+                                                  : FontWeight.normal,
+                                              color: isSelected
+                                                  ? Colors.white
+                                                  : Colors.grey.shade800,
+                                            ),
+                                          ),
+                                          trailing: isSelected
+                                              ? Container(
+                                                  width: 24,
+                                                  height: 24,
+                                                  decoration: BoxDecoration(
+                                                    color: Colors.white,
+                                                    shape: BoxShape.circle,
+                                                  ),
+                                                  child: const Icon(
+                                                    Icons.check,
+                                                    size: 16,
+                                                    color: AppColors.azul,
+                                                  ),
+                                                )
+                                              : null,
+                                          onTap: () {
+                                            setState(() {
+                                              _selectedStore = store;
+                                            });
+                                            HapticFeedback.lightImpact();
+                                          },
+                                          shape: RoundedRectangleBorder(
+                                            borderRadius: BorderRadius.circular(
+                                              12,
+                                            ),
+                                          ),
+                                          dense: false,
+                                        ),
+                                      );
+                                    },
+                                  ),
                           ),
                         ),
                       ),
@@ -411,7 +415,9 @@ class _StoreSelectionScreenState extends State<StoreSelectionScreen> with Single
                               : null,
                           style: ElevatedButton.styleFrom(
                             backgroundColor: AppColors.azul,
-                            disabledBackgroundColor: Colors.grey.withOpacity(0.4),
+                            disabledBackgroundColor: Colors.grey.withOpacity(
+                              0.4,
+                            ),
                             elevation: 0,
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(12),
