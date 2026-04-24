@@ -1,6 +1,7 @@
 class ApiConfig {
   static const String baseUrl =
-      'http://10.100.39.17:5041/api/v1'; //'http://192.168.100.15:5041/api/v1';
+      'http://192.168.100.15:5041/api/v1';  
+      //'http://10.100.39.17:5041/api/v1';
   // Endpoints de Autenticación
   static const String auth = '/auth';
 

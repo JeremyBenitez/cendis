@@ -189,7 +189,7 @@ class _StoreSelectionScreenState extends State<StoreSelectionScreen>
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           const Text(
-                            'Cendis',
+                            'Cendis.',
                             style: TextStyle(
                               fontSize: 42,
                               fontWeight: FontWeight.bold,

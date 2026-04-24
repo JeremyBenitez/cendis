@@ -183,17 +183,12 @@ class ScanningController extends ChangeNotifier {
 
   void _agregarProducto(String codigo, int cantidad) {
     final codigoNormalizado = _normalizeCodigo(codigo);
-    final existingIndex = productos.indexWhere(
-      (p) => _normalizeCodigo(p.codigo) == codigoNormalizado,
+
+    // ✅ Siempre agregar un nuevo registro, no sumar
+    productos.add(
+      ProductoEscaneado(codigo: codigoNormalizado, cantidad: cantidad),
     );
 
-    if (existingIndex >= 0) {
-      productos[existingIndex].cantidad += cantidad;
-    } else {
-      productos.add(
-        ProductoEscaneado(codigo: codigoNormalizado, cantidad: cantidad),
-      );
-    }
     productosValidados[codigoNormalizado] = true;
     bultos++;
 
