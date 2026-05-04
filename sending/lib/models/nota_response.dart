@@ -1,5 +1,10 @@
 import 'dart:convert';
 
+String _normalizeCodigo(String codigo) => codigo.trim().toUpperCase();
+
+// ✅ Agregar este enum al inicio del archivo
+enum DialogType { success, error, warning, info }
+
 class NotaResponse {
   final bool success;
   final String? message;
@@ -9,6 +14,9 @@ class NotaResponse {
   final List<ProductoEscaneadoPrecargado>? productosPrecargados;
   final int? cantidadCorrecta;
 
+  // ✅ NUEVO: Campo para tipo de error
+  final String? errorType; // 'server', 'user', 'connection', 'general'
+
   NotaResponse({
     required this.success,
     this.message,
@@ -17,35 +25,85 @@ class NotaResponse {
     this.productosDirectos,
     this.productosPrecargados,
     this.cantidadCorrecta,
+    this.errorType, // ✅ Agregado
   });
+
+  // ✅ NUEVO: Getters útiles para la UI
+  bool get isServerError => errorType == 'server';
+  bool get isUserError => errorType == 'user';
+  bool get isConnectionError => errorType == 'connection';
+  bool get isGeneralError => errorType == 'general';
+
+  // ✅ NUEVO: Determinar qué tipo de diálogo mostrar
+  DialogType get dialogType {
+    if (success) return DialogType.success;
+    if (isServerError || isConnectionError) return DialogType.error;
+    if (isUserError) return DialogType.warning;
+    return DialogType.info;
+  }
 
   factory NotaResponse.fromJson(dynamic json) {
     print('📦 Procesando respuesta JSON: ${jsonEncode(json)}');
     print('📦 Tipo de respuesta: ${json.runtimeType}');
 
-    // Caso IMPORTADORA: Lista con [mensaje, listaDeProductos]
+    // ✅ CASO 1: Respuesta exitosa con solo "Response" (ej: "Cantidad actualizada correctamente")
+    if (json is Map && json.containsKey('Response') && json.length == 1) {
+      return NotaResponse(
+        success: true,
+        message: json['Response'].toString(),
+        errorType: null, // ✅ Agregado
+      );
+    }
+
+    // Caso 2: Lista con dos elementos [mapaConDatos, codigoHttp] (nota duplicada)
+    if (json is List && json.length >= 2 && json[0] is Map) {
+      final innerMap = Map<String, dynamic>.from(json[0]);
+      if (innerMap.containsKey('Response') &&
+          innerMap.containsKey('cantidades_cargadas')) {
+        final errorMsg = innerMap['Response'].toString();
+        final cantidadesCargadas = innerMap['cantidades_cargadas'] as List;
+        final precargados = cantidadesCargadas
+            .map(
+              (e) => ProductoEscaneadoPrecargado(
+                codigo: _normalizeCodigo(
+                  (e as Map)['codigo']?.toString() ?? '',
+                ),
+                cantidad: (e as Map)['cantidad'] ?? 0,
+              ),
+            )
+            .toList();
+        return NotaResponse(
+          success: false,
+          message: errorMsg,
+          productosPrecargados: precargados,
+          errorType: 'user', // ✅ Error de usuario (nota ya procesada)
+        );
+      }
+    }
+
+    // Caso 3: Lista con [mensaje, listaDeProductos] (importadora exitosa)
     if (json is List && json.length == 2) {
       final primerElemento = json[0];
       final segundoElemento = json[1];
-      
       if (primerElemento is String && segundoElemento is List) {
         final mensaje = primerElemento;
         final listaProductos = segundoElemento;
-        
         final productos = listaProductos
-            .map((item) => ProductoData.fromJson(Map<String, dynamic>.from(item)))
+            .map(
+              (item) => ProductoData.fromJson(Map<String, dynamic>.from(item)),
+            )
             .toList();
-        
         return NotaResponse(
           success: true,
           message: mensaje,
           productosDirectos: productos,
           data: NotaData(productos: productos),
+          errorType: null,
         );
       }
     }
 
-    // Caso: Lista de productos (sin mensaje)
+    // Caso 4: Lista general de productos (sin mensaje)
     if (json is List) {
       final List<ProductoData> productos = [];
       for (var item in json) {
@@ -61,15 +119,17 @@ class NotaResponse {
           success: true,
           productosDirectos: productos,
           data: NotaData(productos: productos),
+          errorType: null,
         );
       }
       return NotaResponse(
         success: false,
         message: 'No se encontraron productos',
+        errorType: 'user',
       );
     }
 
-    // Caso: Mapa (para tiendas normales o errores)
+    // Caso 5: Mapa con error (para tiendas normales)
     if (json is Map) {
       final map = Map<String, dynamic>.from(json);
 
@@ -78,14 +138,33 @@ class NotaResponse {
         int? cantidadCorrecta;
         if (map.containsKey('cantidad_correcta')) {
           final raw = map['cantidad_correcta'];
-          if (raw is int) cantidadCorrecta = raw;
-          else if (raw is String) cantidadCorrecta = int.tryParse(raw.split('.')[0]);
-          else if (raw is double) cantidadCorrecta = raw.toInt();
+          if (raw is int)
+            cantidadCorrecta = raw;
+          else if (raw is String)
+            cantidadCorrecta = int.tryParse(raw.split('.')[0]);
+          else if (raw is double)
+            cantidadCorrecta = raw.toInt();
         }
+
+        // ✅ Determinar tipo de error basado en el mensaje
+        String? errorType;
+        final msgLower = errorMsg.toLowerCase();
+        if (msgLower.contains('no existe') ||
+            msgLower.contains('inválido') ||
+            msgLower.contains('pertenece')) {
+          errorType = 'user';
+        } else if (msgLower.contains('servidor') ||
+            msgLower.contains('error')) {
+          errorType = 'server';
+        } else {
+          errorType = 'general';
+        }
+
         return NotaResponse(
           success: false,
           message: errorMsg,
           cantidadCorrecta: cantidadCorrecta,
+          errorType: errorType,
         );
       }
 
@@ -99,11 +178,13 @@ class NotaResponse {
             success: true,
             productosDirectos: productos,
             data: NotaData(productos: productos),
+            errorType: null,
           );
         } else if (dataJson is Map) {
           return NotaResponse(
             success: true,
             data: NotaData.fromJson(Map<String, dynamic>.from(dataJson)),
+            errorType: null,
           );
         }
       }
@@ -116,32 +197,41 @@ class NotaResponse {
           success: true,
           productosDirectos: productos,
           data: NotaData(productos: productos),
+          errorType: null,
         );
       }
 
-      if (map.containsKey('cantidades_cargadas') && map['cantidades_cargadas'] is List) {
+      if (map.containsKey('cantidades_cargadas') &&
+          map['cantidades_cargadas'] is List) {
         final precargados = (map['cantidades_cargadas'] as List)
-            .map((e) => ProductoEscaneadoPrecargado(
-                  codigo: (e as Map)['codigo']?.toString() ?? '',
-                  cantidad: (e as Map)['cantidad'] ?? 0,
-                ))
+            .map(
+              (e) => ProductoEscaneadoPrecargado(
+                codigo: _normalizeCodigo(
+                  (e as Map)['codigo']?.toString() ?? '',
+                ),
+                cantidad: (e as Map)['cantidad'] ?? 0,
+              ),
+            )
             .toList();
         return NotaResponse(
           success: false,
           message: map['Response']?.toString() ?? 'Nota ya procesada',
           productosPrecargados: precargados,
+          errorType: 'user',
         );
       }
 
       return NotaResponse(
         success: false,
         message: 'Formato de respuesta no reconocido',
+        errorType: 'general',
       );
     }
 
     return NotaResponse(
       success: false,
       message: 'Tipo de respuesta inesperado: ${json.runtimeType}',
+      errorType: 'general',
     );
   }
 
@@ -150,6 +240,7 @@ class NotaResponse {
       success: false,
       message: message,
       rawMessage: message,
+      errorType: 'general',
     );
   }
 
@@ -169,11 +260,7 @@ class NotaData {
   final List<ProductoData>? productos;
   final Map<String, dynamic>? rawData;
 
-  NotaData({
-    this.documento,
-    this.productos,
-    this.rawData,
-  });
+  NotaData({this.documento, this.productos, this.rawData});
 
   factory NotaData.fromJson(Map<String, dynamic> json) {
     List<ProductoData> productos = [];
@@ -208,14 +295,20 @@ class ProductoData {
   });
 
   factory ProductoData.fromJson(Map<String, dynamic> json) {
-    final codigo = json['c_CodArticulo']?.toString() ??
-                    json['codigo']?.toString() ??
-                    json['c_codigo']?.toString() ??
-                    '';
-    final descripcion = json['c_Descri']?.toString() ??
-                         json['descripcion']?.toString() ??
-                         '';
-    final cantidad = (json['n_Cantidad'] ?? json['cantidad_esperada'] ?? json['cantidad'] ?? 0).toInt();
+    final codigo = _normalizeCodigo(
+      json['c_CodArticulo']?.toString() ??
+          json['codigo']?.toString() ??
+          json['c_codigo']?.toString() ??
+          '',
+    );
+    final descripcion =
+        json['c_Descri']?.toString() ?? json['descripcion']?.toString() ?? '';
+    final cantidad =
+        (json['n_Cantidad'] ??
+                json['cantidad_esperada'] ??
+                json['cantidad'] ??
+                0)
+            .toInt();
 
     return ProductoData(
       codigo: codigo,
@@ -230,8 +323,5 @@ class ProductoEscaneadoPrecargado {
   final String codigo;
   final int cantidad;
 
-  ProductoEscaneadoPrecargado({
-    required this.codigo,
-    required this.cantidad,
-  });
+  ProductoEscaneadoPrecargado({required this.codigo, required this.cantidad});
 }

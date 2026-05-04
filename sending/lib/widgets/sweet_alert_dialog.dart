@@ -20,7 +20,9 @@ class SweetAlertDialog {
       barrierDismissible: false,
       builder: (BuildContext context) {
         return Dialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
           child: Container(
             padding: const EdgeInsets.all(24),
             child: Column(
@@ -55,10 +57,7 @@ class SweetAlertDialog {
                 // Mensaje
                 Text(
                   message,
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: Colors.grey.shade700,
-                  ),
+                  style: TextStyle(fontSize: 14, color: Colors.grey.shade700),
                   textAlign: TextAlign.center,
                 ),
                 if (detailTitle != null) ...[
@@ -83,7 +82,13 @@ class SweetAlertDialog {
                               if (detailValue1 != null)
                                 Column(
                                   children: [
-                                    const Text('Escaneado', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                                    const Text(
+                                      'Escaneado',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: Colors.grey,
+                                      ),
+                                    ),
                                     Text(
                                       detailValue1,
                                       style: const TextStyle(
@@ -95,11 +100,20 @@ class SweetAlertDialog {
                                   ],
                                 ),
                               if (detailValue1 != null && detailValue2 != null)
-                                const Icon(Icons.arrow_forward, color: Colors.grey),
+                                const Icon(
+                                  Icons.arrow_forward,
+                                  color: Colors.grey,
+                                ),
                               if (detailValue2 != null)
                                 Column(
                                   children: [
-                                    const Text('Esperado', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                                    const Text(
+                                      'Esperado',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: Colors.grey,
+                                      ),
+                                    ),
                                     Text(
                                       detailValue2,
                                       style: const TextStyle(
@@ -124,7 +138,8 @@ class SweetAlertDialog {
                     if (button1Text != null)
                       Expanded(
                         child: OutlinedButton(
-                          onPressed: onButton1Pressed ?? () => Navigator.pop(context),
+                          onPressed:
+                              onButton1Pressed ?? () => Navigator.pop(context),
                           style: OutlinedButton.styleFrom(
                             side: BorderSide(color: AppColors.azul),
                             padding: const EdgeInsets.symmetric(vertical: 12),
@@ -143,7 +158,8 @@ class SweetAlertDialog {
                     if (button2Text != null)
                       Expanded(
                         child: ElevatedButton(
-                          onPressed: onButton2Pressed ?? () => Navigator.pop(context),
+                          onPressed:
+                              onButton2Pressed ?? () => Navigator.pop(context),
                           style: ElevatedButton.styleFrom(
                             backgroundColor: AppColors.azul,
                             padding: const EdgeInsets.symmetric(vertical: 12),
@@ -180,7 +196,9 @@ class SweetAlertDialog {
       barrierDismissible: false,
       builder: (BuildContext context) {
         return Dialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
           child: Container(
             padding: const EdgeInsets.all(24),
             child: Column(
@@ -212,10 +230,7 @@ class SweetAlertDialog {
                 const SizedBox(height: 12),
                 Text(
                   message,
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: Colors.grey.shade700,
-                  ),
+                  style: TextStyle(fontSize: 14, color: Colors.grey.shade700),
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 24),
@@ -223,7 +238,8 @@ class SweetAlertDialog {
                   SizedBox(
                     width: double.infinity,
                     child: ElevatedButton(
-                      onPressed: onButtonPressed ?? () => Navigator.pop(context),
+                      onPressed:
+                          onButtonPressed ?? () => Navigator.pop(context),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.green,
                         padding: const EdgeInsets.symmetric(vertical: 12),
@@ -231,7 +247,10 @@ class SweetAlertDialog {
                           borderRadius: BorderRadius.circular(10),
                         ),
                       ),
-                      child: Text(buttonText, style: const TextStyle(color: Colors.white)),
+                      child: Text(
+                        buttonText,
+                        style: const TextStyle(color: Colors.white),
+                      ),
                     ),
                   ),
               ],
@@ -255,7 +274,9 @@ class SweetAlertDialog {
       barrierDismissible: false,
       builder: (BuildContext context) {
         return Dialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
           child: Container(
             padding: const EdgeInsets.all(24),
             child: Column(
@@ -287,10 +308,7 @@ class SweetAlertDialog {
                 const SizedBox(height: 12),
                 Text(
                   message,
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: Colors.grey.shade700,
-                  ),
+                  style: TextStyle(fontSize: 14, color: Colors.grey.shade700),
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 24),
@@ -298,7 +316,8 @@ class SweetAlertDialog {
                   SizedBox(
                     width: double.infinity,
                     child: ElevatedButton(
-                      onPressed: onButtonPressed ?? () => Navigator.pop(context),
+                      onPressed:
+                          onButtonPressed ?? () => Navigator.pop(context),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: AppColors.rojo,
                         padding: const EdgeInsets.symmetric(vertical: 12),
@@ -306,7 +325,88 @@ class SweetAlertDialog {
                           borderRadius: BorderRadius.circular(10),
                         ),
                       ),
-                      child: Text(buttonText, style: const TextStyle(color: Colors.white)),
+                      child: Text(
+                        buttonText,
+                        style: const TextStyle(color: Colors.white),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  /// Modal informativo
+  static Future<void> showInfo({
+    required BuildContext context,
+    required String title,
+    required String message,
+    String? buttonText,
+    VoidCallback? onButtonPressed,
+  }) async {
+    return showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return Dialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Container(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 70,
+                  height: 70,
+                  decoration: BoxDecoration(
+                    color: AppColors.azul.withOpacity(0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.info_outline,
+                    size: 40,
+                    color: AppColors.azul,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    color: AppColors.azul,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  message,
+                  style: TextStyle(fontSize: 14, color: Colors.grey.shade700),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 24),
+                if (buttonText != null)
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed:
+                          onButtonPressed ?? () => Navigator.pop(context),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.azul,
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                      ),
+                      child: Text(
+                        buttonText,
+                        style: const TextStyle(color: Colors.white),
+                      ),
                     ),
                   ),
               ],
@@ -330,7 +430,9 @@ class SweetAlertDialog {
       barrierDismissible: false,
       builder: (BuildContext context) {
         return Dialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
           child: Container(
             padding: const EdgeInsets.all(24),
             child: Column(
@@ -362,10 +464,7 @@ class SweetAlertDialog {
                 const SizedBox(height: 12),
                 Text(
                   message,
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: Colors.grey.shade700,
-                  ),
+                  style: TextStyle(fontSize: 14, color: Colors.grey.shade700),
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 24),
